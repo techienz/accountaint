@@ -6,14 +6,14 @@ AI-powered NZ business accountant running locally. Multi-tenant, Xero-integrated
 
 Full architecture, design decisions, and knowledge system design are documented in the **GitHub wiki** — always check here first for context:
 
-- **[Architecture](wiki/Architecture)** — system diagram, tech stack, AI model routing, RAG pipeline, MCP servers, data flow
-- **[NZ Tax Knowledge](wiki/NZ-Tax-Knowledge)** — 3-layer knowledge system (deterministic rules, RAG, Claude reasoning), IRD guide list, ingest pipeline
-- **[Design Decisions](wiki/Design-Decisions)** — rationale for every architectural choice (LanceDB, dual LLM, PII sanitisation, etc.)
-- **[Database Schema](wiki/Database-Schema)** — schema design
-- **[Xero Integration](wiki/Xero-Integration)** — OAuth2 flow, sync strategy
+- **[Architecture](https://github.com/techienz/accountaint-public/wiki/Architecture)** — system diagram, tech stack, AI model routing, RAG pipeline, MCP servers, data flow
+- **[NZ Tax Knowledge](https://github.com/techienz/accountaint-public/wiki/NZ-Tax-Knowledge)** — 3-layer knowledge system (deterministic rules, RAG, Claude reasoning), IRD guide list, ingest pipeline
+- **[Design Decisions](https://github.com/techienz/accountaint-public/wiki/Design-Decisions)** — rationale for every architectural choice (LanceDB, dual LLM, PII sanitisation, etc.)
+- **[Database Schema](https://github.com/techienz/accountaint-public/wiki/Database-Schema)** — schema design
+- **[Xero Integration](https://github.com/techienz/accountaint-public/wiki/Xero-Integration)** — OAuth2 flow, sync strategy
 
-To read the wiki locally: `# Update this URL to your fork's wiki
-git clone https://github.com/<your-org>/accountaint.wiki.git /tmp/accountaint-wiki`
+To read the wiki locally:
+`git clone https://github.com/techienz/accountaint-public.wiki.git /tmp/accountaint-wiki`
 
 ## Design Principles
 
