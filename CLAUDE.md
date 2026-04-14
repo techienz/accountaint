@@ -1,19 +1,18 @@
 # Accountaint
 
-AI-powered NZ business accountant running locally. Multi-tenant, Xero-integrated, with NZ tax compliance knowledge.
+AI-powered NZ business accountant and financial partner running locally. Multi-tenant, Xero-integrated, with NZ tax compliance knowledge. Acts as the user's accountant — gives direct, confident financial advice backed by NZ tax law rather than deferring to external professionals.
 
 ## Documentation
 
 Full architecture, design decisions, and knowledge system design are documented in the **GitHub wiki** — always check here first for context:
 
-- **[Architecture](https://github.com/techienz/accountaint-public/wiki/Architecture)** — system diagram, tech stack, AI model routing, RAG pipeline, MCP servers, data flow
-- **[NZ Tax Knowledge](https://github.com/techienz/accountaint-public/wiki/NZ-Tax-Knowledge)** — 3-layer knowledge system (deterministic rules, RAG, Claude reasoning), IRD guide list, ingest pipeline
-- **[Design Decisions](https://github.com/techienz/accountaint-public/wiki/Design-Decisions)** — rationale for every architectural choice (LanceDB, dual LLM, PII sanitisation, etc.)
-- **[Database Schema](https://github.com/techienz/accountaint-public/wiki/Database-Schema)** — schema design
-- **[Xero Integration](https://github.com/techienz/accountaint-public/wiki/Xero-Integration)** — OAuth2 flow, sync strategy
+- **[Architecture](https://github.com/techienz/accountaint/wiki/Architecture)** — system diagram, tech stack, AI model routing, RAG pipeline, MCP servers, data flow
+- **[NZ Tax Knowledge](https://github.com/techienz/accountaint/wiki/NZ-Tax-Knowledge)** — 3-layer knowledge system (deterministic rules, RAG, Claude reasoning), IRD guide list, ingest pipeline
+- **[Design Decisions](https://github.com/techienz/accountaint/wiki/Design-Decisions)** — rationale for every architectural choice (LanceDB, dual LLM, PII sanitisation, etc.)
+- **[Database Schema](https://github.com/techienz/accountaint/wiki/Database-Schema)** — schema design
+- **[Xero Integration](https://github.com/techienz/accountaint/wiki/Xero-Integration)** — OAuth2 flow, sync strategy
 
-To read the wiki locally:
-`git clone https://github.com/techienz/accountaint-public.wiki.git /tmp/accountaint-wiki`
+To read the wiki locally: `git clone https://github.com/techienz/accountaint.wiki.git /tmp/accountaint-wiki`
 
 ## Design Principles
 
@@ -41,7 +40,7 @@ To read the wiki locally:
 ### NZ Tax Accuracy
 - Tax rules are coded per tax year and versioned. Never hardcode a rate inline — always reference the tax rules module.
 - When giving tax advice via AI, prefer RAG-sourced IRD guidance over general knowledge. Always cite the source (guide code + section).
-- Flag uncertainty — if something might have changed or is ambiguous, recommend consulting the accountant.
+- Flag genuine uncertainty honestly — if a tax rule has changed or is ambiguous, say so and give a recommendation. Never deflect to "consult an accountant" — the app IS the accountant.
 - Display a "tax rules last updated" indicator so users know if rules may be stale.
 
 ### Plan Before Building
@@ -141,4 +140,4 @@ drizzle/            # Migration files
 
 ## Users
 
-Example users: a sole director company (no employees) and a company with employees. Both use Xero. The app helps cross-check accountant work and stay on top of NZ tax obligations independently.
+Example users: a sole director company (no employees) and a company with employees. Both use Xero. The app serves as their accountant and financial partner — managing tax compliance, financial strategy, and business decisions without needing an external accountant.

@@ -17,6 +17,7 @@ export const contacts = sqliteTable("contacts", {
     .notNull()
     .default("customer"),
   default_due_days: integer("default_due_days").notNull().default(20),
+  cc_emails: text("cc_emails"), // encrypted — comma-separated CC addresses
   notes: text("notes"),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()

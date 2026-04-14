@@ -24,7 +24,7 @@ export {
 export { assets, assetDepreciation } from "./assets";
 export { contracts } from "./contracts";
 export { expenses } from "./expenses";
-export { documents } from "./documents";
+export { documents, documentFolders } from "./documents";
 export { workContracts } from "./work-contracts";
 export { timesheetEntries } from "./timesheets";
 export { contacts } from "./contacts";
@@ -37,6 +37,12 @@ export {
   accConfig,
 } from "./calculators";
 export { filingStatus, provisionalTaxPayments } from "./filing";
+export { accounts, journalEntries, journalLines, reconciliationRules } from "./ledger";
+export {
+  akahuConnections,
+  akahuAccounts,
+  bankTransactions,
+} from "./akahu";
 export {
   budgetConfig,
   budgetIncomes,
@@ -52,3 +58,8 @@ export {
   budgetTransactions,
   budgetHolidayAttachments,
 } from "./budget";
+export { employees, leaveRecords } from "./employees";
+export { payRuns, payRunLines } from "./payroll";
+export { regulatoryCheckRuns, regulatoryChecks } from "./regulatory";
+export { taxOptimisationResults } from "./tax-optimisation";
+export { integrationConfig } from "./integration-config";

@@ -71,7 +71,7 @@ export async function createSession(userId: string): Promise<string> {
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_DURATION,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
   });
 
   return token;

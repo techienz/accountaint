@@ -12,6 +12,7 @@ import { eq, and } from "drizzle-orm";
 import { identifyAddBacks, type AddBack } from "./addbacks";
 import { getTaxYearConfig } from "./rules";
 import { decrypt } from "@/lib/encryption";
+import { getLedgerPLTotals } from "@/lib/ledger/reports/profit-loss";
 
 export type ShareholderRemuneration = {
   name: string;
@@ -60,7 +61,21 @@ export async function prepareIR4(
   let totalExpenses = 0;
   let expenseAccounts: { accountName: string; amount: number }[] = [];
 
-  if (plCache) {
+  // Try ledger data first (more accurate — includes expenses, not just invoices)
+  const year = Number(taxYear);
+  const fyStart = `${year - 1}-04-01`;
+  const fyEnd = `${year}-03-31`;
+  const ledgerTotals = getLedgerPLTotals(businessId, fyStart, fyEnd);
+
+  if (ledgerTotals && (ledgerTotals.revenue > 0 || ledgerTotals.expenses > 0)) {
+    grossIncome = ledgerTotals.revenue;
+    totalExpenses = ledgerTotals.expenses;
+    // Note: add-backs identification from ledger accounts would need COA-aware logic
+    // For now, add-backs still use Xero P&L expense account names if available
+  }
+
+  // Fall back to Xero P&L cache if no ledger data
+  if (grossIncome === 0 && totalExpenses === 0 && plCache) {
     const plData = JSON.parse(plCache.data);
     // Extract income and expense totals from Xero P&L structure
     if (plData.Revenue) {

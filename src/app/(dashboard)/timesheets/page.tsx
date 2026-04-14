@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WeekView } from "@/components/timesheets/week-view";
 import { QuickAddForm } from "@/components/timesheets/quick-add-form";
 import { EditEntryForm } from "@/components/timesheets/edit-entry-form";
-import { ChevronLeft, ChevronRight, Plus, Calendar } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { formatDateDisplay } from "@/lib/utils/dates";
 
 type Entry = {
   id: string;
@@ -40,7 +41,10 @@ function getMonday(d: Date): Date {
 }
 
 function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export default function TimesheetsPage() {
@@ -188,6 +192,33 @@ export default function TimesheetsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {contracts.length > 0 && (
+            <select
+              id="export-contract"
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              defaultValue=""
+            >
+              <option value="" disabled>Export for...</option>
+              {contracts.map((c) => (
+                <option key={c.id} value={c.id}>{c.client_name}</option>
+              ))}
+            </select>
+          )}
+          {contracts.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const sel = (document.getElementById("export-contract") as HTMLSelectElement)?.value;
+                if (!sel) return;
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekEnd.getDate() + 6);
+                window.open(`/api/timesheets/export?contract_id=${sel}&week_ending=${formatDate(weekEnd)}`);
+              }}
+            >
+              <Download className="mr-1 h-3.5 w-3.5" />CSV
+            </Button>
+          )}
           {draftIds.length > 0 && (
             <Button variant="outline" onClick={handleApproveAll}>
               Approve All ({draftIds.length})
@@ -213,7 +244,7 @@ export default function TimesheetsPage() {
             />
             <Calendar className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           </div>
-          <span className="text-sm text-muted-foreground">to {formatDate(weekEnd)}</span>
+          <span className="text-sm text-muted-foreground">to {formatDateDisplay(formatDate(weekEnd))}</span>
           <Button variant="outline" size="sm" onClick={goToToday}>
             Today
           </Button>

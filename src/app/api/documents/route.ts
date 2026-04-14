@@ -27,8 +27,9 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const document_type = url.searchParams.get("type") || undefined;
   const tax_year = url.searchParams.get("tax_year") || undefined;
+  const folder_id = url.searchParams.get("folder_id") || undefined;
 
-  const docs = listDocuments(session.activeBusiness.id, { document_type, tax_year });
+  const docs = listDocuments(session.activeBusiness.id, { document_type, tax_year, folder_id });
   return NextResponse.json(docs);
 }
 
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
   const description = (formData.get("description") as string) || null;
   const document_type = ((formData.get("document_type") as string) || "other") as DocumentType;
   const tax_year = (formData.get("tax_year") as string) || null;
+  const folder_id = (formData.get("folder_id") as string) || null;
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = file.name.split(".").pop() || "pdf";

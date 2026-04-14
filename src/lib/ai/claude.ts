@@ -26,15 +26,20 @@ type BusinessContext = {
   gst_registered: boolean;
   gst_filing_period: string | null;
   gst_basis: string | null;
+  xeroConnected: boolean;
 };
 
 function buildSystemPrompt(
   business: BusinessContext,
   knowledgeChunks: string[],
-  memoryChunks?: string[]
+  memoryChunks?: string[],
+  pageContext?: PageContextInput | null,
 ): string {
   const parts = [
-    `You are a knowledgeable NZ tax and business assistant for "${business.name}". You help with all aspects of running a NZ business — tax compliance, financial analysis, GST, PAYE, provisional tax, company returns, personal returns, investment tax, depreciation, expenses, and more.`,
+    `You are the accountant and financial partner for "${business.name}". You handle all aspects of running this NZ business — tax compliance, financial strategy, GST, PAYE, provisional tax, company returns, personal returns, investment tax, depreciation, expenses, salary/dividend optimisation, and more.`,
+    "",
+    "## Your role",
+    "You are not an assistant that defers to professionals. You ARE the professional. The user has chosen to manage their own finances using this tool, which is their right — there is no legal requirement in NZ to use an accountant. Give direct, confident answers backed by NZ tax law and IRD guidance. Never say 'consult your accountant' or 'seek professional advice' — the user is here precisely because they want YOU to be that advice.",
     "",
     "## Business context",
     `- Entity type: ${business.entity_type}`,
@@ -44,18 +49,32 @@ function buildSystemPrompt(
       ? `- GST filing period: ${business.gst_filing_period}`
       : null,
     business.gst_basis ? `- GST basis: ${business.gst_basis}` : null,
+    `- Xero connected: ${business.xeroConnected ? "Yes" : "No"}`,
+    `- Data sources: ${business.xeroConnected ? "Local ledger + Xero sync" : "Local ledger + Akahu bank feeds"}`,
+    business.xeroConnected ? null : "- IMPORTANT: This business does NOT use Xero. Never mention Xero, suggest connecting Xero, or reference Xero features. All data comes from the local ledger, invoicing, and Akahu bank feeds.",
     "",
     "## Instructions",
-    "- Always try to answer the question using your knowledge, the IRD guides below, and the available tools. Do not deflect to external resources unless you genuinely cannot help.",
-    "- Use the available tools to fetch real financial data from Xero before answering questions about the business's finances.",
+    "- Give definitive answers. When asked 'should I do X?', give your recommendation with the reasoning and numbers, not a list of considerations for them to take elsewhere.",
+    "- Use the available tools to fetch real financial data before answering questions about the business's finances.",
     "- Use the search_documents tool to find relevant uploaded documents when the user asks about specific topics or documents.",
-    "- When answering tax questions, cite the IRD guide and section (e.g. 'According to IR365, GST returns section...').",
-    "- If the answer involves complex interactions between multiple tax rules or specific personal circumstances, provide what you know and note which aspects would benefit from professional review.",
+    "- When answering tax questions, cite the IRD guide and section (e.g. 'According to IR365, GST returns section...'). This backs up your advice with authority.",
+    "- If a tax rule is genuinely ambiguous or has changed recently, say so honestly — that's being a good accountant, not deflecting. Frame it as 'here's the risk and my recommendation' not 'go ask someone else'.",
     "- Be concise and practical. Avoid jargon where possible.",
     "- Dollar amounts in the data are real. Contact names have been anonymised for privacy.",
     "- When calculating or summarising financial data, show your working.",
-    "- You can help with tax evasion and fraud questions from an educational/compliance perspective — explain what the rules are, what the penalties are, and how to stay compliant.",
+    "- On tax strategy questions (evasion vs avoidance, aggressive positions, etc.), explain what's legal, what's risky, and what the penalties are. Help the user make informed decisions.",
+    "- You are an aggressive tax optimiser. Don't default to the safe, conservative approach. Always look for legal ways to minimise the tax burden. When answering tax questions, present both the standard approach and any optimised alternatives with the dollar difference.",
+    "- Use the analyse_tax_optimisation tool when the user asks about reducing tax, tax planning, or optimisation. Present results ranked by annual saving.",
+    "- When you identify a grey area, explain the risk honestly (safe/moderate/aggressive) with the specific IRD rule or Revenue Alert that applies. Let the user decide their risk appetite.",
+    "- Never refuse to explain a legal strategy. The user is a capable adult making informed decisions.",
     "- Today's date is " + new Date().toISOString().slice(0, 10) + ".",
+    (() => {
+      try {
+        const { getTaxRulesStatus } = require("@/lib/tax/rules");
+        const status = getTaxRulesStatus();
+        return `- Tax rules for ${status.taxYear} are version ${status.rulesVersion || "unknown"}, last verified ${status.lastVerified || "never"}.`;
+      } catch { return null; }
+    })(),
   ];
 
   if (knowledgeChunks.length > 0) {
@@ -82,8 +101,31 @@ function buildSystemPrompt(
     }
   }
 
+  if (pageContext) {
+    parts.push("");
+    parts.push("## Current page context");
+    parts.push(`The user is currently viewing: **${pageContext.title}**`);
+    parts.push(pageContext.description);
+    if (pageContext.dataSummary) {
+      parts.push("");
+      parts.push("Current data on screen:");
+      parts.push(pageContext.dataSummary);
+    }
+    parts.push("");
+    parts.push(
+      "Use this context to give more relevant, specific answers. If the user asks a vague question like 'what does this mean?' or 'is this okay?', interpret it in the context of what they're looking at."
+    );
+  }
+
   return parts.filter((p) => p !== null).join("\n");
 }
+
+export type PageContextInput = {
+  pageId: string;
+  title: string;
+  description: string;
+  dataSummary?: string;
+};
 
 export type StreamChatOptions = {
   messages: MessageParam[];
@@ -92,6 +134,9 @@ export type StreamChatOptions = {
   userId: string;
   business: BusinessContext;
   sanitisationMap: SanitisationMap;
+  pageContext?: PageContextInput | null;
+  webSearchEnabled?: boolean;
+  attachmentContentBlocks?: ContentBlockParam[];
 };
 
 const MAX_TOOL_ITERATIONS = 10;
@@ -154,15 +199,38 @@ export function streamChat(options: StreamChatOptions): ReadableStream<Uint8Arra
           (r) => `[${r.createdAt.slice(0, 10)}] ${r.role}: ${r.content}`
         );
 
-        const systemPrompt = buildSystemPrompt(business, knowledgeChunks, memoryChunks);
+        const systemPrompt = buildSystemPrompt(business, knowledgeChunks, memoryChunks, options.pageContext);
         let currentMessages = [...messages];
+
+        // Prepend attachment content blocks to the last user message
+        if (options.attachmentContentBlocks && options.attachmentContentBlocks.length > 0) {
+          const lastIdx = currentMessages.length - 1;
+          if (lastIdx >= 0 && currentMessages[lastIdx].role === "user") {
+            const lastMsg = currentMessages[lastIdx];
+            const existingContent = typeof lastMsg.content === "string"
+              ? [{ type: "text" as const, text: lastMsg.content }]
+              : (lastMsg.content as ContentBlockParam[]);
+            currentMessages[lastIdx] = {
+              role: "user",
+              content: [...options.attachmentContentBlocks, ...existingContent],
+            };
+          }
+        }
+
         let iterations = 0;
         let fullAssistantText = "";
 
         while (iterations < MAX_TOOL_ITERATIONS) {
           iterations++;
 
-          const activeTools = USE_MCP ? getMcpChatTools() : chatTools;
+          const activeTools: Tool[] = USE_MCP ? getMcpChatTools() : [...chatTools];
+          if (options.webSearchEnabled) {
+            activeTools.push({
+              type: "web_search_20250305",
+              name: "web_search",
+              max_uses: 3,
+            } as unknown as Tool);
+          }
 
           const response = await getClient().messages.create({
             model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
@@ -186,6 +254,12 @@ export function streamChat(options: StreamChatOptions): ReadableStream<Uint8Arra
           for await (const event of response) {
             if (event.type === "content_block_start") {
               if (event.content_block.type === "tool_use") {
+                hasToolUse = true;
+                currentToolId = event.content_block.id;
+                currentToolName = event.content_block.name;
+                currentToolInput = "";
+              }
+              if (event.content_block.type === "server_tool_use") {
                 hasToolUse = true;
                 currentToolId = event.content_block.id;
                 currentToolName = event.content_block.name;
@@ -245,6 +319,9 @@ export function streamChat(options: StreamChatOptions): ReadableStream<Uint8Arra
           // Execute tools and add results
           const toolResults: ContentBlockParam[] = [];
           for (const block of toolUseBlocks) {
+            // Web search is a server-side tool - results come automatically
+            if (block.name === "web_search") continue;
+
             const statusMsg = getToolStatusMessage(block.name);
             controller.enqueue(
               encodeEvent({ type: "status", message: statusMsg })
@@ -261,6 +338,9 @@ export function streamChat(options: StreamChatOptions): ReadableStream<Uint8Arra
               content: JSON.stringify(result),
             } as unknown as ContentBlockParam);
           }
+
+          // If only web_search was called, no local tool results - don't add empty user turn
+          if (toolResults.length === 0) break;
 
           currentMessages.push({
             role: "user",
@@ -325,9 +405,10 @@ function getToolStatusMessage(toolName: string): string {
     get_business_snapshot: "Building your business snapshot...",
     get_expense_summary: "Summarising your expenses...",
     get_recent_expenses: "Looking up recent expenses...",
-    search_knowledge: "Searching tax knowledge base...",
+    search_knowledge: "Searching IRD knowledge base...",
     get_document_summary: "Reading your document...",
     search_documents: "Searching your documents...",
+    web_search: "Searching the web...",
     compare_with_current_year: "Comparing with current year data...",
     get_work_contracts: "Looking up your work contracts...",
     get_earnings_projection: "Calculating projected earnings...",
@@ -336,6 +417,20 @@ function getToolStatusMessage(toolName: string): string {
     get_local_invoices: "Looking up your invoices...",
     get_invoice_summary: "Calculating invoice summary...",
     create_invoice_from_timesheets: "Creating invoice from timesheets...",
+    get_bank_transactions: "Looking up bank transactions...",
+    match_bank_transaction: "Matching transaction...",
+    categorise_bank_transaction: "Categorising transaction...",
+    reconcile_bank_transaction: "Reconciling transaction...",
+    exclude_bank_transaction: "Excluding transaction...",
+    suggest_bank_matches: "Finding matches...",
+    create_timesheet_entry: "Logging time...",
+    approve_timesheet_entries: "Approving timesheets...",
+    create_expense: "Recording expense...",
+    send_invoice_email: "Sending invoice...",
+    create_pay_run: "Creating pay run...",
+    finalise_pay_run: "Finalising pay run...",
+    create_contact: "Creating contact...",
+    update_work_contract: "Updating contract...",
   };
   return messages[toolName] || "Working on it...";
 }

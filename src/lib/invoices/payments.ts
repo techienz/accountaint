@@ -1,6 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { getDb, schema } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
+import { postPaymentReceivedJournal, postPaymentMadeJournal } from "@/lib/ledger/post";
 
 type PaymentInput = {
   invoice_id: string;
@@ -79,6 +80,20 @@ export function recordPayment(businessId: string, data: PaymentInput) {
     .run();
 
   recalculateInvoiceTotals(data.invoice_id);
+
+  // Post journal entry
+  try {
+    const postFn = invoice.type === "ACCREC" ? postPaymentReceivedJournal : postPaymentMadeJournal;
+    postFn(businessId, {
+      id,
+      date: data.date,
+      amount: data.amount,
+      invoice_id: data.invoice_id,
+      contact_id: invoice.contact_id,
+    });
+  } catch (e) {
+    console.error("[ledger] Failed to post payment journal:", e);
+  }
 
   return db
     .select()

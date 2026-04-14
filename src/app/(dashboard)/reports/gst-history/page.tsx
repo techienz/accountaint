@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { getDb, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
-import { calculateGstReturn } from "@/lib/gst/calculator";
+import { calculateGstReturnFromLedger } from "@/lib/gst/calculator";
 import { generateGstPeriods, formatPeriod } from "@/lib/gst/periods";
 import { getTaxYear } from "@/lib/tax/rules";
 import { ReportHeader } from "@/components/reports/report-header";
@@ -16,7 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { XeroInvoice } from "@/lib/xero/types";
 
 export default async function GstHistoryPage() {
   const session = await getSession();
@@ -40,21 +37,8 @@ export default async function GstHistoryPage() {
     );
   }
 
-  const db = getDb();
-  const cached = db
-    .select()
-    .from(schema.xeroCache)
-    .where(eq(schema.xeroCache.business_id, biz.id))
-    .all()
-    .find((c) => c.entity_type === "invoices");
-
-  const invoices: XeroInvoice[] = cached
-    ? (JSON.parse(cached.data)?.Invoices || [])
-    : [];
-
   const taxConfig = getTaxYear(new Date());
   const gstRate = taxConfig?.gstRate || 0.15;
-  const basis = (biz.gst_basis as "invoice" | "payments") || "invoice";
 
   const periods = generateGstPeriods(
     biz.gst_filing_period || "2monthly",
@@ -62,18 +46,18 @@ export default async function GstHistoryPage() {
     6
   );
 
-  const results = periods.map((period) =>
-    calculateGstReturn(invoices, period, basis, gstRate)
-  );
+  const results = periods
+    .map((period) => calculateGstReturnFromLedger(biz.id, period, gstRate))
+    .filter((r): r is NonNullable<typeof r> => r !== null);
 
   return (
     <>
       <ReportHeader title="GST History" />
       <Card>
         <CardContent className="pt-6">
-          {invoices.length === 0 ? (
+          {results.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No invoice data. Sync from Xero to see GST history.
+              No GST data recorded yet. Post invoices or journal entries with GST to see history here.
             </p>
           ) : (
             <Table>
@@ -123,5 +107,3 @@ export default async function GstHistoryPage() {
     </>
   );
 }
-
-// formatPeriod imported from @/lib/gst/periods

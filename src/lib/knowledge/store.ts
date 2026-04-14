@@ -25,6 +25,7 @@ export async function getOrCreateTable(): Promise<Table> {
   } else {
     // Create with a dummy record that we immediately delete
     // LanceDB requires data to infer schema on creation
+    // Dimension matches LM Studio's embedding model output
     table = await conn.createTable(TABLE_NAME, [
       {
         id: "__init__",
@@ -33,7 +34,7 @@ export async function getOrCreateTable(): Promise<Table> {
         content: "",
         source_url: "",
         last_fetched: new Date().toISOString(),
-        vector: new Array(768).fill(0),
+        vector: new Array(192).fill(0),
       },
     ]);
     await table.delete('id = "__init__"');
@@ -108,18 +109,20 @@ export async function getStats(): Promise<{
   const tbl = await getOrCreateTable();
 
   try {
-    const allRows = await tbl
-      .search(new Array(768).fill(0))
-      .limit(10000)
-      .toArray();
+    const totalCount = await tbl.countRows();
 
-    if (allRows.length === 0) {
+    if (totalCount === 0) {
       return { chunkCount: 0, guides: [], lastFetched: null, perGuide: [] };
     }
 
+    // Query only the columns we need (no vectors) for stats
+    const rows = await tbl.query()
+      .select(["guide_code", "last_fetched"])
+      .toArray();
+
     // Per-guide stats
     const guideMap = new Map<string, { count: number; lastFetched: string | null }>();
-    for (const row of allRows) {
+    for (const row of rows) {
       const code = row.guide_code as string;
       const fetched = row.last_fetched as string | null;
       const existing = guideMap.get(code) || { count: 0, lastFetched: null };
@@ -139,13 +142,13 @@ export async function getStats(): Promise<{
       .sort((a, b) => a.code.localeCompare(b.code));
 
     const guides = perGuide.map((g) => g.code);
-    const dates = allRows
+    const dates = rows
       .map((r) => r.last_fetched as string)
       .filter(Boolean)
       .sort();
 
     return {
-      chunkCount: allRows.length,
+      chunkCount: totalCount,
       guides,
       lastFetched: dates.length > 0 ? dates[dates.length - 1] : null,
       perGuide,

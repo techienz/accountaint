@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, ArrowRight } from "lucide-react";
+import { Plus, ArrowRight, Calculator } from "lucide-react";
 
 type WorkContract = {
   id: string;
@@ -95,9 +95,16 @@ export default function WorkContractsPage() {
             Track client engagements, rates, and withholding tax
           </p>
         </div>
-        <Link href="/work-contracts/new">
-          <Button><Plus className="mr-2 h-4 w-4" />Add Contract</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/work-contracts/wt-advisor">
+            <Button variant="outline">
+              <Calculator className="mr-2 h-4 w-4" />WT Advisor
+            </Button>
+          </Link>
+          <Link href="/work-contracts/new">
+            <Button><Plus className="mr-2 h-4 w-4" />Add Contract</Button>
+          </Link>
+        </div>
       </div>
 
       {summary && (

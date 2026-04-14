@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SavingsSummary } from "@/components/tax-savings/savings-summary";
 import { MonthlyTable } from "@/components/tax-savings/monthly-table";
+import { SetPageContext } from "@/components/page-context-provider";
+import { PAGE_CONTEXTS } from "@/lib/help/page-context";
 
 type MonthlyTarget = {
   month: string;
@@ -27,16 +29,32 @@ type SavingsData = {
 
 export default function TaxSavingsPage() {
   const [data, setData] = useState<SavingsData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function loadData() {
     fetch("/api/tax-savings")
-      .then((r) => r.json())
-      .then(setData);
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load (${r.status})`);
+        return r.json();
+      })
+      .then(setData)
+      .catch((err) => setError(err.message));
   }
 
   useEffect(() => {
     loadData();
   }, []);
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Tax Savings Calculator</h1>
+        <p className="text-muted-foreground">
+          Unable to load tax savings data: {error}. Try syncing your Xero data first.
+        </p>
+      </div>
+    );
+  }
 
   if (!data) return <div>Loading...</div>;
 

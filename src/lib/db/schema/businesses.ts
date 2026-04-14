@@ -43,6 +43,13 @@ export const businesses = sqliteTable("businesses", {
   nzbn: text("nzbn"), // encrypted
   company_number: text("company_number"), // encrypted
   registered_office: text("registered_office"), // encrypted
+  incorporation_date: text("incorporation_date"), // YYYY-MM-DD
+  fbt_registered: integer("fbt_registered", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  pays_contractors: integer("pays_contractors", { mode: "boolean" })
+    .notNull()
+    .default(false),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

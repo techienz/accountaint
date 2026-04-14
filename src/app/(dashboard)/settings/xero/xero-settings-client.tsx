@@ -80,7 +80,7 @@ export function XeroSettingsClient({
   }
 
   const formattedSyncTime = lastSyncAt
-    ? new Date(lastSyncAt).toLocaleString()
+    ? new Date(lastSyncAt).toLocaleString("en-NZ", { timeZone: "Pacific/Auckland" })
     : null;
 
   return (

@@ -31,3 +31,22 @@ export async function GET() {
 
   return NextResponse.json({ messages });
 }
+
+export async function DELETE() {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const business = session.activeBusiness;
+  if (!business) {
+    return NextResponse.json({ success: true });
+  }
+
+  const db = getDb();
+  db.delete(schema.chatMessages)
+    .where(eq(schema.chatMessages.business_id, business.id))
+    .run();
+
+  return NextResponse.json({ success: true });
+}

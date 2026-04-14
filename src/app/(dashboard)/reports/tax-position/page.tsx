@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { getDb, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { generateProfitAndLoss } from "@/lib/ledger/reports/profit-loss";
 import { calculateDeadlines } from "@/lib/tax/deadlines";
 import { getTaxYear, getNzTaxYear } from "@/lib/tax/rules";
-import { extractTotals, formatNzd } from "@/lib/reports/parsers";
+import { formatNzd } from "@/lib/reports/parsers";
 import { ReportHeader } from "@/components/reports/report-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { todayNZ } from "@/lib/utils/dates";
 
 export default async function TaxPositionPage() {
   const session = await getSession();
@@ -15,21 +15,19 @@ export default async function TaxPositionPage() {
   if (!session.activeBusiness) redirect("/settings?new=true");
 
   const biz = session.activeBusiness;
-  const db = getDb();
 
-  // Get P&L for taxable income estimate
-  const plCache = db
-    .select()
-    .from(schema.xeroCache)
-    .where(eq(schema.xeroCache.business_id, biz.id))
-    .all()
-    .find((c) => c.entity_type === "profit_loss");
+  // Use current NZ tax year (April 1 to today)
+  const now = new Date();
+  const today = todayNZ();
+  const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const from = `${year}-04-01`;
+  const to = today;
 
-  const plData = plCache ? JSON.parse(plCache.data) : null;
-  const totals = extractTotals(plData);
+  const plReport = generateProfitAndLoss(biz.id, from, to);
+  const hasData =
+    plReport.revenue.accounts.length > 0 || plReport.expenses.accounts.length > 0;
 
   // Tax config
-  const now = new Date();
   const currentTaxYear = getNzTaxYear(now);
   const taxConfig = getTaxYear(now);
   const entityType = biz.entity_type as "company" | "sole_trader" | "partnership" | "trust";
@@ -41,7 +39,7 @@ export default async function TaxPositionPage() {
         : null; // Sole traders/partnerships use individual rates
 
   const estimatedTax =
-    totals && taxRate ? Math.max(0, totals.netProfit * taxRate) : null;
+    hasData && taxRate ? Math.max(0, plReport.netProfit * taxRate) : null;
 
   // Upcoming deadlines
   const sixMonthsOut = new Date(now);
@@ -74,11 +72,19 @@ export default async function TaxPositionPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {totals ? (
+            {hasData ? (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Revenue</span>
+                  <span className="font-medium">${formatNzd(plReport.revenue.total)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Expenses</span>
+                  <span className="font-medium">${formatNzd(plReport.expenses.total)}</span>
+                </div>
+                <div className="flex justify-between text-sm border-t pt-2">
                   <span className="text-muted-foreground">Net Profit (from P&L)</span>
-                  <span className="font-medium">${formatNzd(totals.netProfit)}</span>
+                  <span className="font-medium">${formatNzd(plReport.netProfit)}</span>
                 </div>
                 {taxRate !== null && estimatedTax !== null ? (
                   <>
@@ -96,14 +102,14 @@ export default async function TaxPositionPage() {
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     {entityType === "sole_trader" || entityType === "partnership"
-                      ? "Individual tax rates apply — consult your accountant for an accurate estimate."
+                      ? "Individual tax rates apply — use the tax calculator for an accurate estimate."
                       : "Tax rate not available for this tax year."}
                   </p>
                 )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Sync Xero data to estimate taxable income.
+                No transactions recorded yet. Add journal entries or post invoices to estimate taxable income.
               </p>
             )}
           </CardContent>

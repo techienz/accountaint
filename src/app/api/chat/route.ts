@@ -6,6 +6,10 @@ import { eq, and, desc } from "drizzle-orm";
 import { buildSanitisationMap, sanitise } from "@/lib/ai/sanitise";
 import { streamChat, buildAnthropicMessages } from "@/lib/ai/claude";
 import { embedChatMessage } from "@/lib/ai/memory";
+import { processAttachments } from "@/lib/ai/attachments";
+import { hasXeroConnection } from "@/lib/xero/status";
+import { listContacts } from "@/lib/contacts";
+import { decrypt } from "@/lib/encryption";
 import type { XeroContact } from "@/lib/xero/types";
 
 export async function POST(request: NextRequest) {
@@ -22,7 +26,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { message: string };
+  let body: {
+    message: string;
+    pageContext?: {
+      pageId: string;
+      title: string;
+      description: string;
+      dataSummary?: string;
+    };
+    webSearchEnabled?: boolean;
+    attachments?: {
+      filename: string;
+      mimetype: string;
+      path: string;
+      messageId: string;
+    }[];
+  };
   try {
     body = await request.json();
   } catch {
@@ -43,22 +62,35 @@ export async function POST(request: NextRequest) {
   const trimmedMessage = message.trim().slice(0, 10000);
   const db = getDb();
 
-  // Load contacts for sanitisation
-  const contactsCache = db
-    .select()
-    .from(schema.xeroCache)
-    .where(
-      and(
-        eq(schema.xeroCache.business_id, business.id),
-        eq(schema.xeroCache.entity_type, "contacts")
-      )
-    )
-    .get();
+  // Load contacts for sanitisation — local contacts first, Xero supplement
+  const xeroConnected = hasXeroConnection(business.id);
+  const localContacts = listContacts(business.id);
+  const localAsXero: XeroContact[] = localContacts.map((c) => ({
+    ContactID: c.id,
+    Name: c.name,
+    EmailAddress: c.email || "",
+    IsSupplier: c.type === "supplier" || c.type === "both",
+    IsCustomer: c.type === "customer" || c.type === "both",
+    ContactStatus: "ACTIVE" as const,
+  }));
 
-  const contactsRaw = contactsCache
-    ? JSON.parse(contactsCache.data)
-    : {};
-  const contacts: XeroContact[] = contactsRaw?.Contacts || contactsRaw || [];
+  let xeroContacts: XeroContact[] = [];
+  if (xeroConnected) {
+    const contactsCache = db
+      .select()
+      .from(schema.xeroCache)
+      .where(
+        and(
+          eq(schema.xeroCache.business_id, business.id),
+          eq(schema.xeroCache.entity_type, "contacts")
+        )
+      )
+      .get();
+    const contactsRaw = contactsCache ? JSON.parse(contactsCache.data) : {};
+    xeroContacts = Array.isArray(contactsRaw?.Contacts) ? contactsRaw.Contacts : Array.isArray(contactsRaw) ? contactsRaw : [];
+  }
+
+  const contacts: XeroContact[] = [...localAsXero, ...xeroContacts];
   const sanitisationMap = buildSanitisationMap(contacts);
 
   // Sanitise user message
@@ -78,6 +110,21 @@ export async function POST(request: NextRequest) {
 
   // Fire-and-forget: embed user message for chat memory
   embedChatMessage(userMessageId, business.id, "user", trimmedMessage).catch(() => {});
+
+  // Process attachments if any
+  let attachmentContentBlocks: import("@anthropic-ai/sdk/resources/messages").ContentBlockParam[] = [];
+  let attachmentMeta: { filename: string; mimetype: string; path: string; description?: string }[] = [];
+  if (body.attachments && body.attachments.length > 0) {
+    const processed = await processAttachments(body.attachments, sanitisationMap);
+    attachmentContentBlocks = processed.contentBlocks;
+    attachmentMeta = processed.metadata;
+
+    // Update the message with attachment metadata
+    db.update(schema.chatMessages)
+      .set({ attachments: JSON.stringify(attachmentMeta) })
+      .where(eq(schema.chatMessages.id, userMessageId))
+      .run();
+  }
 
   // Load chat history (last 20 messages)
   const history = db
@@ -105,8 +152,12 @@ export async function POST(request: NextRequest) {
       gst_registered: business.gst_registered,
       gst_filing_period: business.gst_filing_period,
       gst_basis: business.gst_basis,
+      xeroConnected,
     },
     sanitisationMap,
+    pageContext: body.pageContext || null,
+    webSearchEnabled: body.webSearchEnabled || false,
+    attachmentContentBlocks,
   });
 
   // Collect the full response to save to DB

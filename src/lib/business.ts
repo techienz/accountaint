@@ -3,6 +3,7 @@ import { getDb, schema } from "./db";
 import { eq, and } from "drizzle-orm";
 import { encrypt, decrypt } from "./crypto";
 import { validateIrdNumber } from "./tax/ird-validator";
+import { seedChartOfAccounts } from "./ledger/accounts";
 
 export type CreateBusinessInput = {
   name: string;
@@ -18,6 +19,9 @@ export type CreateBusinessInput = {
   nzbn?: string;
   company_number?: string;
   registered_office?: string;
+  incorporation_date?: string;
+  fbt_registered?: boolean;
+  pays_contractors?: boolean;
 };
 
 export type UpdateBusinessInput = Partial<CreateBusinessInput> & {
@@ -48,6 +52,9 @@ export function createBusiness(userId: string, input: CreateBusinessInput) {
       nzbn: input.nzbn ? encrypt(input.nzbn) : null,
       company_number: input.company_number ? encrypt(input.company_number) : null,
       registered_office: input.registered_office ? encrypt(input.registered_office) : null,
+      incorporation_date: input.incorporation_date || null,
+      fbt_registered: input.fbt_registered ?? false,
+      pays_contractors: input.pays_contractors ?? false,
       balance_date: input.balance_date || "03-31",
       gst_registered: input.gst_registered ?? false,
       gst_filing_period: input.gst_filing_period,
@@ -64,6 +71,13 @@ export function createBusiness(userId: string, input: CreateBusinessInput) {
       .set({ active_business_id: id })
       .where(eq(schema.users.id, userId))
       .run();
+  }
+
+  // Auto-seed Chart of Accounts for the new business
+  try {
+    seedChartOfAccounts(id);
+  } catch (e) {
+    console.error("[business] Failed to seed COA:", e);
   }
 
   return getBusiness(userId, id);
@@ -138,6 +152,10 @@ export function updateBusiness(userId: string, businessId: string, input: Update
     updates.company_number = input.company_number ? encrypt(input.company_number) : null;
   if (input.registered_office !== undefined)
     updates.registered_office = input.registered_office ? encrypt(input.registered_office) : null;
+  if (input.incorporation_date !== undefined)
+    updates.incorporation_date = input.incorporation_date || null;
+  if (input.fbt_registered !== undefined) updates.fbt_registered = input.fbt_registered;
+  if (input.pays_contractors !== undefined) updates.pays_contractors = input.pays_contractors;
   if (input.invoice_prefix !== undefined) updates.invoice_prefix = input.invoice_prefix;
   if (input.payment_instructions !== undefined) updates.payment_instructions = input.payment_instructions || null;
   if (input.invoice_custom_footer !== undefined) updates.invoice_custom_footer = input.invoice_custom_footer || null;

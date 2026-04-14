@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { learnVendorCategory, suggestCategory, type CategorySuggestion } from "@/lib/expenses/categorise";
+import { postExpenseJournal } from "@/lib/ledger/post";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -119,16 +120,32 @@ export function updateExpense(id: string, businessId: string, data: Partial<Expe
     )
     .run();
 
-  // When status changes to "confirmed", learn the vendor→category mapping
+  // When status changes to "confirmed", learn the vendor→category mapping and post journal
   if (data.status === "confirmed") {
     const confirmed = getExpense(id, businessId);
-    if (confirmed && confirmed.category !== "other") {
-      learnVendorCategory(
-        businessId,
-        confirmed.vendor,
-        confirmed.description || "",
-        confirmed.category
-      ).catch(() => {}); // Fire-and-forget
+    if (confirmed) {
+      if (confirmed.category !== "other") {
+        learnVendorCategory(
+          businessId,
+          confirmed.vendor,
+          confirmed.description || "",
+          confirmed.category
+        ).catch(() => {}); // Fire-and-forget
+      }
+
+      // Post journal entry for confirmed expense
+      try {
+        postExpenseJournal(businessId, {
+          id: confirmed.id,
+          date: confirmed.date,
+          category: confirmed.category,
+          amount: confirmed.amount,
+          gst_amount: confirmed.gst_amount,
+          vendor: confirmed.vendor,
+        });
+      } catch (e) {
+        console.error("[ledger] Failed to post expense journal:", e);
+      }
     }
   }
 

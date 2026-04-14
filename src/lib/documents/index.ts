@@ -161,7 +161,7 @@ export function deleteDocument(id: string, businessId: string): boolean {
 
 export function listDocuments(
   businessId: string,
-  filters?: { document_type?: string; tax_year?: string }
+  filters?: { document_type?: string; tax_year?: string; folder_id?: string }
 ) {
   const db = getDb();
   const conditions = [eq(schema.documents.business_id, businessId)];
@@ -176,6 +176,9 @@ export function listDocuments(
   }
   if (filters?.tax_year) {
     conditions.push(eq(schema.documents.tax_year, filters.tax_year));
+  }
+  if (filters?.folder_id) {
+    conditions.push(eq(schema.documents.folder_id, filters.folder_id));
   }
 
   const rows = db

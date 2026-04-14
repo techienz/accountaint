@@ -24,5 +24,6 @@ export type StreamEvent =
   | { type: "text"; content: string }
   | { type: "status"; message: string }
   | { type: "sources"; sources: CitedSource[] }
+  | { type: "web_source"; url: string; title: string }
   | { type: "done" }
   | { type: "error"; message: string };

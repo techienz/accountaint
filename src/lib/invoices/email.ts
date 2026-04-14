@@ -11,7 +11,8 @@ export async function sendInvoiceEmail(
   businessId: string,
   recipientEmail: string,
   subject?: string,
-  body?: string
+  body?: string,
+  ccEmails?: string[]
 ) {
   const invoice = getInvoice(invoiceId, businessId);
   if (!invoice) throw new Error("Invoice not found");
@@ -66,11 +67,18 @@ export async function sendInvoiceEmail(
      <p>Amount due: $${invoice.amount_due.toLocaleString("en-NZ", { minimumFractionDigits: 2 })}</p>
      <p>Due date: ${invoice.due_date}</p>`;
 
+  // Get CC emails from contact or explicit parameter
+  const cc = ccEmails && ccEmails.length > 0
+    ? ccEmails
+    : contact.cc_emails
+      ? contact.cc_emails.split(",").map((e: string) => e.trim()).filter(Boolean)
+      : undefined;
+
   await sendEmail(smtpConfig, emailSubject, emailBody, [
     {
       filename: `${invoice.invoice_number}.pdf`,
       content: pdfBuffer,
       contentType: "application/pdf",
     },
-  ]);
+  ], cc);
 }

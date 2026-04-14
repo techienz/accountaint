@@ -1,7 +1,7 @@
 import { getLmStudioClient, checkLmStudioHealth } from "./client";
 import { LmStudioUnavailableError } from "./embeddings";
 
-const LOCAL_MODEL = process.env.LMSTUDIO_CHAT_MODEL || "qwen3.5-9b";
+const LOCAL_MODEL = (process.env.LMSTUDIO_CHAT_MODEL || "").trim() || "qwen3.5-9b";
 
 export type LocalCompleteOptions = {
   system: string;

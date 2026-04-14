@@ -2,10 +2,14 @@ import OpenAI from "openai";
 
 let client: OpenAI | null = null;
 
+function getBaseUrl(): string {
+  const raw = (process.env.LMSTUDIO_URL || "").trim();
+  return raw || "http://localhost:1234/v1";
+}
+
 export function getLmStudioClient(): OpenAI {
   if (client) return client;
-  const baseURL = process.env.LMSTUDIO_URL || "http://localhost:1234/v1";
-  client = new OpenAI({ baseURL, apiKey: "lm-studio" });
+  client = new OpenAI({ baseURL: getBaseUrl(), apiKey: "lm-studio" });
   return client;
 }
 
@@ -19,9 +23,9 @@ export async function checkLmStudioHealth(): Promise<boolean> {
   }
 
   try {
-    const baseURL = process.env.LMSTUDIO_URL || "http://localhost:1234";
+    const baseURL = getBaseUrl().replace(/\/v1\/?$/, "");
     const response = await fetch(`${baseURL}/v1/models`, {
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(5000),
     });
     const available = response.ok;
     healthCache = { available, checkedAt: now };

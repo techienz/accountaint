@@ -19,11 +19,26 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 
   const sqlite = new Database(dbPath);
 
+  // Checkpoint any pending WAL writes from a previous process
+  sqlite.pragma("wal_checkpoint(TRUNCATE)");
+
   // Enable WAL mode for better concurrent read performance
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
 
   db = drizzle(sqlite, { schema });
+
+  // Checkpoint WAL on graceful shutdown so data isn't lost on restart
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.on(signal, () => {
+      try {
+        sqlite.pragma("wal_checkpoint(TRUNCATE)");
+        sqlite.close();
+      } catch {
+        // DB may already be closed
+      }
+    });
+  }
 
   return db;
 }

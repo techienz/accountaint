@@ -300,3 +300,52 @@ export async function checkOverdueInvoices() {
     }
   }
 }
+
+export async function syncAllAkahuData() {
+  try {
+    const { syncAllAkahu } = await import("@/lib/akahu/sync");
+    await syncAllAkahu();
+    console.log("[scheduler] Akahu sync complete");
+  } catch (error) {
+    console.error("[scheduler] Akahu sync failed:", error);
+  }
+}
+
+export async function cleanupChatAttachments() {
+  const db = getDb();
+  const fsModule = await import("fs");
+  const pathModule = await import("path");
+
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+
+  const allWithAttachments = db
+    .select()
+    .from(schema.chatMessages)
+    .all()
+    .filter((m) => m.attachments != null && m.created_at && m.created_at < cutoff);
+
+  let cleaned = 0;
+  for (const msg of allWithAttachments) {
+    try {
+      const attachments = JSON.parse(msg.attachments!) as { path: string }[];
+      for (const att of attachments) {
+        const fullPath = pathModule.join(process.cwd(), att.path);
+        if (fsModule.existsSync(fullPath)) {
+          fsModule.unlinkSync(fullPath);
+        }
+        const dir = pathModule.dirname(fullPath);
+        try { fsModule.rmdirSync(dir); } catch { /* not empty or already gone */ }
+      }
+
+      db.update(schema.chatMessages)
+        .set({ attachments: null })
+        .where(eq(schema.chatMessages.id, msg.id))
+        .run();
+      cleaned++;
+    } catch {
+      // Skip individual failures
+    }
+  }
+
+  console.log(`[scheduler] Cleaned up attachments from ${cleaned} messages`);
+}

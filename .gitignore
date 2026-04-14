@@ -44,4 +44,9 @@ xero-tokens.json
 
 # Claude
 .claude/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Build info
 tsconfig.tsbuildinfo

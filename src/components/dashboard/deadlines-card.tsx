@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
+import { parseDateLocal } from "@/lib/utils/dates";
 
 type Deadline = {
   type: string;
@@ -12,7 +13,7 @@ type Deadline = {
 function daysUntil(dateStr: string): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const due = new Date(dateStr);
+  const due = parseDateLocal(dateStr);
   return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 

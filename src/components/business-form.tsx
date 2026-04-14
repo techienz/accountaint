@@ -32,6 +32,9 @@ type Business = {
   nzbn?: string | null;
   company_number?: string | null;
   registered_office?: string | null;
+  incorporation_date?: string | null;
+  fbt_registered?: boolean;
+  pays_contractors?: boolean;
   invoice_prefix?: string | null;
   payment_instructions?: string | null;
   invoice_custom_footer?: string | null;
@@ -91,6 +94,8 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
       paye_frequency: hasEmployees
         ? (formData.get("paye_frequency") as string)
         : undefined,
+      fbt_registered: formData.get("fbt_registered") === "on",
+      pays_contractors: formData.get("pays_contractors") === "on",
       ...(isEditing ? {
         invoice_prefix: (formData.get("invoice_prefix") as string) || "INV",
         payment_instructions: (formData.get("payment_instructions") as string) || undefined,
@@ -315,6 +320,30 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
                 </Select>
               </div>
             )}
+          </div>
+
+          <div className="space-y-3 border-t pt-4">
+            <Label className="text-base">Additional Obligations</Label>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="fbt_registered"
+                defaultChecked={business?.fbt_registered ?? false}
+                name="fbt_registered"
+                className="h-4 w-4 rounded border-input"
+              />
+              <Label htmlFor="fbt_registered">FBT registered (provide fringe benefits)</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="pays_contractors"
+                defaultChecked={business?.pays_contractors ?? false}
+                name="pays_contractors"
+                className="h-4 w-4 rounded border-input"
+              />
+              <Label htmlFor="pays_contractors">Pay contractors (schedular payments)</Label>
+            </div>
           </div>
 
           {/* Invoice Settings */}

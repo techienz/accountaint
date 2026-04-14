@@ -1,6 +1,7 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { getDb, schema } from "@/lib/db";
 import { eq, and, desc, gte } from "drizzle-orm";
+import { formatDateNZ, todayNZ } from "@/lib/utils/dates";
 import { calculateDeadlines } from "@/lib/tax/deadlines";
 import { getTaxYear, getNzTaxYear, getTaxYearConfig } from "@/lib/tax/rules";
 import { calculateGstReturn, type GstPeriod } from "@/lib/gst/calculator";
@@ -23,9 +24,14 @@ import { listContracts, getContractSummary } from "@/lib/contracts";
 import { calculateSnapshotMetrics } from "@/lib/reports/snapshot";
 import { listExpenses, getExpenseSummary } from "@/lib/expenses";
 import { listWorkContracts, getWorkContractSummary, calculateEarningsProjection } from "@/lib/work-contracts";
-import { listTimesheetEntries, getTimesheetSummary } from "@/lib/timesheets";
+import { listTimesheetEntries, getTimesheetSummary, createTimesheetEntry, approveTimesheetEntries } from "@/lib/timesheets";
 import { listInvoices, getInvoiceSummary, toXeroInvoiceFormat } from "@/lib/invoices";
 import { createInvoiceFromTimesheets } from "@/lib/invoices/from-timesheets";
+import { sendInvoiceEmail } from "@/lib/invoices/email";
+import { encrypt } from "@/lib/encryption";
+import { createPayRun, finalisePayRun } from "@/lib/payroll";
+import { createContact, updateContact } from "@/lib/contacts";
+import { updateWorkContract } from "@/lib/work-contracts";
 import { runAnnualDepreciation } from "@/lib/assets/annual-depreciation";
 import { calculateHomeOffice } from "@/lib/calculators/home-office";
 import { calculateVehicleClaim } from "@/lib/calculators/vehicle";
@@ -33,6 +39,7 @@ import { estimateACCLevy } from "@/lib/calculators/acc";
 import { decrypt } from "@/lib/encryption";
 import { listDocuments, getDocument } from "@/lib/documents";
 import { searchDocumentChunks } from "@/lib/documents/embeddings";
+import { gatherOptimisationSnapshot } from "@/lib/tax/optimisation/gather";
 
 export const chatTools: Tool[] = [
   {
@@ -483,6 +490,22 @@ export const chatTools: Tool[] = [
     },
   },
   {
+    name: "search_knowledge",
+    description:
+      "Search the NZ tax knowledge base — IRD guides, tax rules, and compliance information that have been loaded into the system. Use this to look up specific IRD guides (e.g. IR1061), tax topics, or compliance rules.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "The search query — e.g. 'IR1061', 'home office deduction rules', 'GST filing frequency'",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "compare_with_current_year",
     description:
       "Compare a historical document (e.g. last year's IR4 tax return) with current Xero data. Useful for spotting differences between years.",
@@ -620,6 +643,212 @@ export const chatTools: Tool[] = [
       required: ["work_contract_id"],
     },
   },
+  {
+    name: "analyse_tax_optimisation",
+    description: "Analyse the business's financial data to identify tax optimisation opportunities. Returns a comprehensive financial snapshot that you should analyse for every legal way to reduce the tax burden. Call this when the user asks about reducing tax, tax planning, optimisation, or saving money on tax.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  // ── Banking / Reconciliation tools ───────────────────────────────────
+  {
+    name: "get_bank_transactions",
+    description: "Get bank transactions from Akahu. Shows unmatched, matched, or all transactions. Use when the user asks about bank transactions, reconciliation status, or what needs reconciling.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string", enum: ["unmatched", "matched", "reconciled", "excluded", "all"], description: "Filter by status (default: unmatched)" },
+        limit: { type: "number", description: "Max transactions to return (default 20)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "match_bank_transaction",
+    description: "Match a bank transaction to an existing journal entry. Use when the user says a bank transaction corresponds to a specific invoice payment or recorded transaction.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        bank_transaction_id: { type: "string", description: "The bank transaction ID" },
+        journal_entry_id: { type: "string", description: "The journal entry ID to match it to" },
+      },
+      required: ["bank_transaction_id", "journal_entry_id"],
+    },
+  },
+  {
+    name: "categorise_bank_transaction",
+    description: "Create a journal entry for an unmatched bank transaction and categorise it. Use when the user says a bank transaction is a specific type of expense or income (e.g. 'that $12.50 is a software subscription').",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        bank_transaction_id: { type: "string", description: "The bank transaction ID" },
+        account_code: { type: "string", description: "Ledger account code (e.g. '6500' for Software & Subscriptions, '6200' for Travel, '6100' for Office Supplies, '4100' for Sales Revenue)" },
+        description: { type: "string", description: "Description for the journal entry" },
+        gst_inclusive: { type: "boolean", description: "Whether the amount includes GST (default true)" },
+      },
+      required: ["bank_transaction_id", "account_code", "description"],
+    },
+  },
+  {
+    name: "reconcile_bank_transaction",
+    description: "Mark a matched bank transaction as reconciled (confirmed correct). Use when the user confirms a match is correct.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        bank_transaction_id: { type: "string", description: "The bank transaction ID to reconcile" },
+      },
+      required: ["bank_transaction_id"],
+    },
+  },
+  {
+    name: "exclude_bank_transaction",
+    description: "Exclude a bank transaction from reconciliation. Use for transfers between own accounts or transactions that don't need accounting treatment.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        bank_transaction_id: { type: "string", description: "The bank transaction ID to exclude" },
+      },
+      required: ["bank_transaction_id"],
+    },
+  },
+  {
+    name: "suggest_bank_matches",
+    description: "Get match suggestions for an unmatched bank transaction. Finds journal entries with similar amounts and dates.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        bank_transaction_id: { type: "string", description: "The bank transaction ID to find matches for" },
+      },
+      required: ["bank_transaction_id"],
+    },
+  },
+  // ── Write tools ──────────────────────────────────────────────────────
+  {
+    name: "create_timesheet_entry",
+    description: "Log time to a work contract. Use when the user asks to log hours, record time, or add a timesheet entry. You must find the correct work_contract_id first using get_work_contracts.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        work_contract_id: { type: "string", description: "The work contract ID to log time against" },
+        date: { type: "string", description: "Date in YYYY-MM-DD format" },
+        duration_minutes: { type: "number", description: "Duration in minutes (e.g. 360 for 6 hours, 345 for 5.75 hours)" },
+        description: { type: "string", description: "Activity description (e.g. 'Team intro', 'Change Management', 'Technical design')" },
+        billable: { type: "boolean", description: "Whether this time is billable (default true)" },
+      },
+      required: ["work_contract_id", "date", "duration_minutes", "description"],
+    },
+  },
+  {
+    name: "approve_timesheet_entries",
+    description: "Approve draft timesheet entries so they can be invoiced. Use when the user asks to approve timesheets or prepare them for invoicing.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        entry_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of timesheet entry IDs to approve. If not provided, approves ALL draft entries.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "create_expense",
+    description: "Record a business expense. Use when the user asks to add or log an expense.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        date: { type: "string", description: "Date in YYYY-MM-DD format" },
+        description: { type: "string", description: "What the expense was for" },
+        amount: { type: "number", description: "Total amount including GST" },
+        category: {
+          type: "string",
+          enum: ["office_supplies", "travel", "meals_entertainment", "professional_fees", "software_subscriptions", "vehicle", "home_office", "utilities", "insurance", "bank_fees", "other"],
+          description: "Expense category",
+        },
+        gst_included: { type: "boolean", description: "Whether GST is included in the amount (default true)" },
+      },
+      required: ["date", "description", "amount", "category"],
+    },
+  },
+  {
+    name: "send_invoice_email",
+    description: "Email an invoice PDF to the contact. Use when the user asks to send or email an invoice.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        invoice_id: { type: "string", description: "The invoice ID to send" },
+        email: { type: "string", description: "Recipient email address (uses contact email if not provided)" },
+        subject: { type: "string", description: "Custom email subject (optional)" },
+        body: { type: "string", description: "Custom email body HTML (optional)" },
+      },
+      required: ["invoice_id"],
+    },
+  },
+  {
+    name: "create_pay_run",
+    description: "Create and calculate a pay run for employees. Use when the user asks to run payroll or pay themselves.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        period_start: { type: "string", description: "Pay period start date YYYY-MM-DD" },
+        period_end: { type: "string", description: "Pay period end date YYYY-MM-DD" },
+        pay_date: { type: "string", description: "Payment date YYYY-MM-DD" },
+        frequency: { type: "string", enum: ["weekly", "fortnightly"], description: "Pay frequency" },
+        employee_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Employee IDs to include. If not provided, includes all active employees.",
+        },
+      },
+      required: ["period_start", "period_end", "pay_date", "frequency"],
+    },
+  },
+  {
+    name: "finalise_pay_run",
+    description: "Finalise a draft pay run — locks it and posts journal entries. Use when the user confirms they want to finalise payroll.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        pay_run_id: { type: "string", description: "The pay run ID to finalise" },
+      },
+      required: ["pay_run_id"],
+    },
+  },
+  {
+    name: "create_contact",
+    description: "Create a new contact (customer, supplier, or both). Use when the user asks to add a new contact or client.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Contact name" },
+        email: { type: "string", description: "Email address" },
+        phone: { type: "string", description: "Phone number" },
+        type: { type: "string", enum: ["customer", "supplier", "both"], description: "Contact type (default customer)" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "update_work_contract",
+    description: "Update an existing work contract. Use when the user asks to change a contract rate, dates, or other details.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contract_id: { type: "string", description: "The work contract ID to update" },
+        hourly_rate: { type: "number", description: "New hourly rate" },
+        weekly_hours: { type: "number", description: "New weekly hours" },
+        end_date: { type: "string", description: "New end date YYYY-MM-DD" },
+        wt_rate: { type: "number", description: "New withholding tax rate (0.0-1.0)" },
+        project_name: { type: "string", description: "Project name" },
+        project_code: { type: "string", description: "Project code" },
+      },
+      required: ["contract_id"],
+    },
+  },
 ];
 
 function getCachedData<T>(businessId: string, entityType: string): T | null {
@@ -661,50 +890,82 @@ export async function executeTool(
 ): Promise<unknown> {
   switch (toolName) {
     case "get_profit_loss": {
+      // Local-first: try ledger
+      try {
+        const { generateProfitAndLoss } = await import("@/lib/ledger/reports/profit-loss");
+        const taxYear = getNzTaxYear(new Date());
+        const pl = generateProfitAndLoss(businessId, `${taxYear - 1}-04-01`, todayNZ());
+        return { revenue: pl.revenue.total, expenses: pl.expenses.total + pl.costOfGoodsSold.total, netProfit: pl.netProfit, source: "ledger" };
+      } catch {}
+      // Fallback: Xero cache
       const data = getCachedData<XeroReport>(businessId, "profit_loss");
-      if (!data) return { error: "No profit & loss data synced from Xero yet. Please sync Xero data first." };
+      if (!data) return { error: "No profit & loss data available. Create invoices and expenses to generate financial data." };
       return sanitiseXeroData(data, sanitisationMap);
     }
 
     case "get_balance_sheet": {
+      // Local-first: try ledger
+      try {
+        const { generateBalanceSheet } = await import("@/lib/ledger/reports/balance-sheet");
+        const bs = generateBalanceSheet(businessId, todayNZ());
+        return { assets: bs.assets, liabilities: bs.liabilities, equity: bs.equity, isBalanced: bs.isBalanced, source: "ledger" };
+      } catch {}
+      // Fallback: Xero cache
       const data = getCachedData<XeroReport>(businessId, "balance_sheet");
-      if (!data) return { error: "No balance sheet data synced from Xero yet. Please sync Xero data first." };
+      if (!data) return { error: "No balance sheet data available. Record transactions to generate balance sheet." };
       return sanitiseXeroData(data, sanitisationMap);
     }
 
     case "get_bank_accounts": {
-      const data = getCachedData<XeroBankAccount[]>(businessId, "bank_accounts");
-      if (!data) return { error: "No bank account data synced from Xero yet. Please sync Xero data first." };
+      // Local-first: Akahu accounts
+      const { decrypt: dec } = await import("@/lib/encryption");
+      const akahuAccts = getDb().select().from(schema.akahuAccounts).where(eq(schema.akahuAccounts.linked_business_id, businessId)).all();
+      if (akahuAccts.length > 0) {
+        return akahuAccts.map((a) => ({ name: dec(a.name), institution: dec(a.institution), balance: a.balance, source: "akahu" }));
+      }
+      // Fallback: Xero cache
+      const data = getCachedData<{ Accounts: XeroBankAccount[] }>(businessId, "bank_accounts");
+      if (!data) return { error: "No bank accounts connected. Connect Akahu in Settings > Bank Feeds." };
       return sanitiseXeroData(data, sanitisationMap);
     }
 
     case "get_invoices": {
-      const data = getCachedData<XeroInvoice[]>(businessId, "invoices");
-      if (!data) return { error: "No invoice data synced from Xero yet. Please sync Xero data first." };
-      let filtered = data;
+      const { listInvoices: listLocal } = await import("@/lib/invoices");
       const typeFilter = toolInput.type as string | undefined;
+      const statusFilter = toolInput.status as string | undefined;
+      let localInvs = listLocal(businessId);
+      if (typeFilter === "sales") localInvs = localInvs.filter((i) => i.type === "ACCREC");
+      if (typeFilter === "purchases") localInvs = localInvs.filter((i) => i.type === "ACCPAY");
+      if (statusFilter) localInvs = localInvs.filter((i) => i.status === statusFilter.toLowerCase());
+      if (localInvs.length > 0) {
+        return sanitiseXeroData(localInvs.slice(0, 20).map((i) => ({
+          id: i.id, invoice_number: i.invoice_number, contact_name: i.contact_name,
+          type: i.type, status: i.status, date: i.date, due_date: i.due_date,
+          total: i.total, amount_due: i.amount_due,
+        })), sanitisationMap);
+      }
+      // Fallback: Xero cache
+      const data = getCachedData<{ Invoices: XeroInvoice[] }>(businessId, "invoices");
+      if (!data?.Invoices) return { message: "No invoices found. Create invoices in the Invoicing section." };
+      let filtered = data.Invoices;
       if (typeFilter === "sales") filtered = filtered.filter((i) => i.Type === "ACCREC");
       if (typeFilter === "purchases") filtered = filtered.filter((i) => i.Type === "ACCPAY");
-      const statusFilter = toolInput.status as string | undefined;
-      if (statusFilter) {
-        if (statusFilter === "OVERDUE") {
-          const now = new Date().toISOString().slice(0, 10);
-          filtered = filtered.filter((i) => i.AmountDue > 0 && i.DueDate < now);
-        } else {
-          filtered = filtered.filter((i) => i.Status === statusFilter);
-        }
-      }
-      return sanitiseXeroData(filtered.slice(0, 50), sanitisationMap);
+      if (statusFilter) filtered = filtered.filter((i) => i.Status === statusFilter);
+      return sanitiseXeroData(filtered.slice(0, 20), sanitisationMap);
     }
 
     case "get_contacts": {
-      const data = getCachedData<XeroContact[]>(businessId, "contacts");
-      if (!data) return { error: "No contact data synced from Xero yet. Please sync Xero data first." };
-      let filtered = data;
-      const typeFilter = toolInput.type as string | undefined;
-      if (typeFilter === "customer") filtered = filtered.filter((c) => c.IsCustomer);
-      if (typeFilter === "supplier") filtered = filtered.filter((c) => c.IsSupplier);
-      return sanitiseXeroData(filtered, sanitisationMap);
+      const { listContacts: listLocal } = await import("@/lib/contacts");
+      const localContacts = listLocal(businessId);
+      if (localContacts.length > 0) {
+        return sanitiseXeroData(localContacts.map((c) => ({
+          name: c.name, email: c.email, phone: c.phone, type: c.type,
+        })), sanitisationMap);
+      }
+      // Fallback: Xero cache
+      const data = getCachedData<{ Contacts: XeroContact[] }>(businessId, "contacts");
+      if (!data?.Contacts) return { message: "No contacts found. Add contacts in the Contacts section." };
+      return sanitiseXeroData(data.Contacts.slice(0, 50), sanitisationMap);
     }
 
     case "get_upcoming_deadlines": {
@@ -803,7 +1064,7 @@ export async function executeTool(
         reports.map((r) => ({
           entity_type: r.entity_type,
           change_count: r.change_count,
-          date: r.created_at.toISOString().slice(0, 10),
+          date: formatDateNZ(r.created_at),
           changes: JSON.parse(r.changes_json),
         })),
         sanitisationMap
@@ -843,7 +1104,7 @@ export async function executeTool(
           entity_type: a.entity_type,
           status: a.status,
           suggested_question: a.suggested_question,
-          date: a.created_at.toISOString().slice(0, 10),
+          date: formatDateNZ(a.created_at),
         })),
         sanitisationMap
       );
@@ -1060,8 +1321,8 @@ export async function executeTool(
 
     case "get_expense_summary": {
       const now = new Date();
-      const dateFrom = (toolInput.date_from as string) || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      const dateTo = (toolInput.date_to as string) || now.toISOString().slice(0, 10);
+      const dateFrom = (toolInput.date_from as string) || formatDateNZ(new Date(now.getFullYear(), now.getMonth(), 1));
+      const dateTo = (toolInput.date_to as string) || todayNZ();
       const summary = getExpenseSummary(businessId, dateFrom, dateTo);
       return sanitiseXeroData(summary, sanitisationMap);
     }
@@ -1132,6 +1393,48 @@ export async function executeTool(
         })),
         sanitisationMap
       );
+    }
+
+    case "search_knowledge": {
+      const query = toolInput.query as string;
+      if (!query) return { error: "Query is required" };
+
+      const { retrieveKnowledge } = await import("@/lib/knowledge/retriever");
+      const { getStats } = await import("@/lib/knowledge/store");
+
+      const results = await retrieveKnowledge(query, 5);
+
+      if (results.length === 0) {
+        // Check if the guide exists in the database even if no relevant chunks found
+        const stats = await getStats();
+        const codeMatch = query.match(/\b(IR\d+[A-Z]*)\b/i);
+        if (codeMatch) {
+          const code = codeMatch[1].toUpperCase();
+          const guideStats = stats.perGuide.find(
+            (g) => g.code.toUpperCase() === code
+          );
+          if (guideStats) {
+            return {
+              message: `Guide ${code} is in the knowledge base with ${guideStats.chunkCount} chunks (last updated: ${guideStats.lastFetched}). However, no chunks matched your specific query. Try asking about the content of the guide instead.`,
+              guide_code: code,
+              chunk_count: guideStats.chunkCount,
+              in_database: true,
+            };
+          }
+        }
+        return {
+          message: "No matching knowledge found.",
+          available_guides: stats.guides,
+          total_chunks: stats.chunkCount,
+        };
+      }
+
+      return results.map((r) => ({
+        guide_code: r.guideCode,
+        section: r.section,
+        content: r.content,
+        source_url: r.sourceUrl,
+      }));
     }
 
     case "search_documents": {
@@ -1226,6 +1529,7 @@ export async function executeTool(
       if (typeFilter) contracts = contracts.filter((c) => c.contract_type === typeFilter);
       return sanitiseXeroData(
         contracts.map((c) => ({
+          id: c.id,
           client_name: c.client_name,
           contract_type: c.contract_type,
           hourly_rate: c.hourly_rate,
@@ -1236,6 +1540,8 @@ export async function executeTool(
           end_date: c.end_date,
           wt_rate: c.wt_rate,
           status: c.status,
+          project_name: c.project_name,
+          project_code: c.project_code,
         })),
         sanitisationMap
       );
@@ -1258,8 +1564,8 @@ export async function executeTool(
 
     case "get_timesheet_summary": {
       const now = new Date();
-      const dateFrom = (toolInput.date_from as string) || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      const dateTo = (toolInput.date_to as string) || now.toISOString().slice(0, 10);
+      const dateFrom = (toolInput.date_from as string) || formatDateNZ(new Date(now.getFullYear(), now.getMonth(), 1));
+      const dateTo = (toolInput.date_to as string) || todayNZ();
       const summary = getTimesheetSummary(businessId, dateFrom, dateTo);
       return sanitiseXeroData(summary, sanitisationMap);
     }
@@ -1273,6 +1579,7 @@ export async function executeTool(
       entries = entries.slice(0, limit);
       return sanitiseXeroData(
         entries.map((e) => ({
+          id: e.id,
           client_name: e.client_name,
           date: e.date,
           duration_hours: Math.round(e.duration_minutes / 6) / 10,
@@ -1296,6 +1603,7 @@ export async function executeTool(
       invoiceList = invoiceList.slice(0, limit);
       return sanitiseXeroData(
         invoiceList.map((inv) => ({
+          id: inv.id,
           invoice_number: inv.invoice_number,
           contact_name: inv.contact_name,
           type: inv.type,
@@ -1332,6 +1640,213 @@ export async function executeTool(
         },
         sanitisationMap
       );
+    }
+
+    case "analyse_tax_optimisation": {
+      const snapshot = gatherOptimisationSnapshot(businessId);
+      return {
+        snapshot,
+        instructions: "Analyse this financial snapshot and identify EVERY legal tax optimisation opportunity. For each: compare current vs optimised approach, calculate the dollar saving from the actual numbers, rate risk (safe/moderate/aggressive), cite the IRD rule. Be aggressive - find strategies most accountants wouldn't bother with. Present ranked by annual saving, highest first.",
+      };
+    }
+
+    // ── Banking / Reconciliation execution ─────────────────────────────
+
+    case "get_bank_transactions": {
+      const statusFilter = (toolInput.status as string) || "unmatched";
+      const limit = (toolInput.limit as number) || 20;
+      const txns = getDb()
+        .select()
+        .from(schema.bankTransactions)
+        .where(eq(schema.bankTransactions.business_id, businessId))
+        .all()
+        .filter((t) => statusFilter === "all" || t.reconciliation_status === statusFilter)
+        .slice(0, limit)
+        .map((t) => ({
+          id: t.id,
+          date: t.date,
+          description: decrypt(t.description),
+          amount: t.amount,
+          merchant: t.merchant_name ? decrypt(t.merchant_name) : null,
+          status: t.reconciliation_status,
+        }));
+      return { transactions: txns, count: txns.length };
+    }
+
+    case "match_bank_transaction": {
+      const { matchTransaction } = await import("@/lib/ledger/reconciliation");
+      const result = matchTransaction(
+        businessId,
+        toolInput.bank_transaction_id as string,
+        toolInput.journal_entry_id as string
+      );
+      if (!result.success) return { error: "Failed to match transaction" };
+      return { success: true, linkedInvoice: result.linkedInvoice || null };
+    }
+
+    case "categorise_bank_transaction": {
+      const { createAndMatch } = await import("@/lib/ledger/reconciliation");
+      const journalId = createAndMatch(
+        businessId,
+        toolInput.bank_transaction_id as string,
+        toolInput.account_code as string,
+        toolInput.description as string,
+        (toolInput.gst_inclusive as boolean) ?? true
+      );
+      if (!journalId) return { error: "Failed to categorise transaction. Check the account code and that the bank account has a linked ledger account." };
+      return { success: true, journal_entry_id: journalId };
+    }
+
+    case "reconcile_bank_transaction": {
+      const { reconcileTransaction } = await import("@/lib/ledger/reconciliation");
+      const result = reconcileTransaction(businessId, toolInput.bank_transaction_id as string);
+      if (!result.success) return { error: "Failed to reconcile. Transaction must be matched first." };
+      return { success: true, linkedInvoice: result.linkedInvoice || null };
+    }
+
+    case "exclude_bank_transaction": {
+      const { excludeTransaction } = await import("@/lib/ledger/reconciliation");
+      const success = excludeTransaction(businessId, toolInput.bank_transaction_id as string);
+      if (!success) return { error: "Failed to exclude transaction" };
+      return { success: true };
+    }
+
+    case "suggest_bank_matches": {
+      const { suggestMatches } = await import("@/lib/ledger/reconciliation");
+      const suggestions = suggestMatches(businessId, toolInput.bank_transaction_id as string);
+      return { suggestions };
+    }
+
+    // ── Write tool execution ──────────────────────────────────────────
+
+    case "create_timesheet_entry": {
+      const contractId = toolInput.work_contract_id as string;
+      if (!contractId) return { error: "work_contract_id is required" };
+      const entry = createTimesheetEntry(businessId, {
+        work_contract_id: contractId,
+        date: toolInput.date as string,
+        duration_minutes: toolInput.duration_minutes as number,
+        description: (toolInput.description as string) || null,
+        billable: (toolInput.billable as boolean) ?? true,
+      });
+      if (!entry) return { error: "Failed to create timesheet entry" };
+      return { success: true, entry: { id: entry.id, date: entry.date, duration_minutes: entry.duration_minutes, description: entry.description, status: entry.status } };
+    }
+
+    case "approve_timesheet_entries": {
+      const entryIds = toolInput.entry_ids as string[] | undefined;
+      if (entryIds && entryIds.length > 0) {
+        const count = approveTimesheetEntries(businessId, entryIds);
+        return { success: true, approved: count };
+      }
+      // Approve all draft entries
+      const allDraft = listTimesheetEntries(businessId, { status: "draft" });
+      if (allDraft.length === 0) return { message: "No draft entries to approve" };
+      const count = approveTimesheetEntries(businessId, allDraft.map((e) => e.id));
+      return { success: true, approved: count };
+    }
+
+    case "create_expense": {
+      const { v4: uuidv4 } = await import("uuid");
+      const expId = uuidv4();
+      const amount = toolInput.amount as number;
+      const gstIncl = (toolInput.gst_included as boolean) ?? true;
+      const gstRate = 0.15;
+      const gstAmount = gstIncl ? Math.round((amount * gstRate / (1 + gstRate)) * 100) / 100 : Math.round(amount * gstRate * 100) / 100;
+      const db3 = getDb();
+      db3.insert(schema.expenses).values({
+        id: expId,
+        business_id: businessId,
+        date: toolInput.date as string,
+        vendor: encrypt(toolInput.description as string),
+        description: encrypt(toolInput.description as string),
+        category: (toolInput.category as "office_supplies" | "travel" | "meals_entertainment" | "professional_fees" | "software_subscriptions" | "vehicle" | "home_office" | "utilities" | "insurance" | "bank_fees" | "other") || "other",
+        amount,
+        gst_amount: gstAmount,
+        status: "confirmed",
+      }).run();
+      return { success: true, expense: { id: expId, amount, description: toolInput.description } };
+    }
+
+    case "send_invoice_email": {
+      const invoiceId = toolInput.invoice_id as string;
+      if (!invoiceId) return { error: "invoice_id is required" };
+      try {
+        const inv = listInvoices(businessId).find((i) => i.id === invoiceId);
+        if (!inv) return { error: "Invoice not found" };
+        const contactEmail = toolInput.email as string || "";
+        await sendInvoiceEmail(invoiceId, businessId, contactEmail, toolInput.subject as string | undefined, toolInput.body as string | undefined);
+        return { success: true, message: `Invoice emailed successfully` };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : "Failed to send email" };
+      }
+    }
+
+    case "create_pay_run": {
+      const db2 = getDb();
+      let empIds = toolInput.employee_ids as string[] | undefined;
+      if (!empIds || empIds.length === 0) {
+        const allEmps = db2.select().from(schema.employees).where(and(eq(schema.employees.business_id, businessId), eq(schema.employees.is_active, true))).all();
+        empIds = allEmps.map((e) => e.id);
+      }
+      if (empIds.length === 0) return { error: "No active employees found" };
+      const payRun = createPayRun(businessId, {
+        period_start: toolInput.period_start as string,
+        period_end: toolInput.period_end as string,
+        pay_date: toolInput.pay_date as string,
+        frequency: toolInput.frequency as "weekly" | "fortnightly",
+        employee_ids: empIds,
+      });
+      if (!payRun) return { error: "Failed to create pay run" };
+      return {
+        success: true,
+        pay_run: {
+          id: payRun.id,
+          status: payRun.status,
+          lines: payRun.lines.map((l) => ({
+            gross_pay: l.gross_pay,
+            paye: l.paye,
+            kiwisaver_employee: l.kiwisaver_employee,
+            net_pay: l.net_pay,
+          })),
+        },
+      };
+    }
+
+    case "finalise_pay_run": {
+      const payRunId = toolInput.pay_run_id as string;
+      if (!payRunId) return { error: "pay_run_id is required" };
+      try {
+        const result = finalisePayRun(payRunId, businessId);
+        return { success: true, message: "Pay run finalised and journal entries posted", status: result?.status };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : "Failed to finalise" };
+      }
+    }
+
+    case "create_contact": {
+      const contact = createContact(businessId, {
+        name: toolInput.name as string,
+        email: (toolInput.email as string) || null,
+        phone: (toolInput.phone as string) || null,
+        type: (toolInput.type as "customer" | "supplier" | "both") || "customer",
+      });
+      return { success: true, contact: { id: contact?.id, name: toolInput.name } };
+    }
+
+    case "update_work_contract": {
+      const cId = toolInput.contract_id as string;
+      if (!cId) return { error: "contract_id is required" };
+      const updates: Record<string, unknown> = {};
+      if (toolInput.hourly_rate !== undefined) updates.hourly_rate = toolInput.hourly_rate;
+      if (toolInput.weekly_hours !== undefined) updates.weekly_hours = toolInput.weekly_hours;
+      if (toolInput.end_date !== undefined) updates.end_date = toolInput.end_date;
+      if (toolInput.wt_rate !== undefined) updates.wt_rate = toolInput.wt_rate;
+      if (toolInput.project_name !== undefined) updates.project_name = toolInput.project_name;
+      if (toolInput.project_code !== undefined) updates.project_code = toolInput.project_code;
+      const updated = updateWorkContract(cId, businessId, updates);
+      if (!updated) return { error: "Contract not found" };
+      return { success: true, message: "Contract updated" };
     }
 
     default:

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateNZ, todayNZ } from "@/lib/utils/dates";
 import {
   Table,
   TableBody,
@@ -26,9 +27,9 @@ type Summary = {
 export default function TimesheetSummaryPage() {
   const now = new Date();
   const [dateFrom, setDateFrom] = useState(
-    new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+    formatDateNZ(new Date(now.getFullYear(), now.getMonth(), 1))
   );
-  const [dateTo, setDateTo] = useState(now.toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState(todayNZ());
   const [summary, setSummary] = useState<Summary | null>(null);
 
   function loadSummary() {

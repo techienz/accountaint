@@ -1,6 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
-import type { XeroInvoice } from "@/lib/xero/types";
+
+type ApArProps = {
+  totalReceivable: number;
+  totalPayable: number;
+  overdueCount: number;
+  hasData: boolean;
+};
 
 function formatNzd(value: number): string {
   return value.toLocaleString("en-NZ", {
@@ -9,14 +15,8 @@ function formatNzd(value: number): string {
   });
 }
 
-export function ApArCard({
-  invoices,
-  connected,
-}: {
-  invoices: XeroInvoice[] | null;
-  connected: boolean;
-}) {
-  if (!connected) {
+export function ApArCard({ totalReceivable, totalPayable, overdueCount, hasData }: ApArProps) {
+  if (!hasData) {
     return (
       <Card>
         <CardHeader>
@@ -24,35 +24,12 @@ export function ApArCard({
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            <Link href="/settings/xero" className="text-primary hover:underline">
-              Connect Xero
-            </Link>{" "}
-            to see receivables and payables.
+            No invoices yet. <Link href="/invoices" className="text-primary hover:underline">Create an invoice</Link> to start tracking receivables.
           </p>
         </CardContent>
       </Card>
     );
   }
-
-  const outstanding = (invoices || []).filter(
-    (inv) => inv.AmountDue > 0 && inv.Status !== "VOIDED" && inv.Status !== "DELETED"
-  );
-
-  const totalReceivable = outstanding
-    .filter((inv) => inv.Type === "ACCREC")
-    .reduce((sum, inv) => sum + inv.AmountDue, 0);
-
-  const totalPayable = outstanding
-    .filter((inv) => inv.Type === "ACCPAY")
-    .reduce((sum, inv) => sum + inv.AmountDue, 0);
-
-  // Find oldest overdue
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const overdue = outstanding.filter((inv) => new Date(inv.DueDate) < now);
-  const oldestOverdue = overdue.sort(
-    (a, b) => new Date(a.DueDate).getTime() - new Date(b.DueDate).getTime()
-  )[0];
 
   return (
     <Card>
@@ -78,11 +55,10 @@ export function ApArCard({
             ${formatNzd(totalPayable)}
           </span>
         </div>
-        {oldestOverdue && (
+        {overdueCount > 0 && (
           <div className="border-t pt-3">
             <p className="text-xs text-amber-600">
-              Oldest overdue: {oldestOverdue.Contact.Name} — ${formatNzd(oldestOverdue.AmountDue)}{" "}
-              (due {new Date(oldestOverdue.DueDate).toLocaleDateString("en-NZ")})
+              {overdueCount} overdue invoice{overdueCount > 1 ? "s" : ""}
             </p>
           </div>
         )}

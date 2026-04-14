@@ -45,11 +45,11 @@ export function MobileNav(props: Props) {
 
       {/* Slide-out sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-[70] w-[280px] transform transition-transform duration-200 ease-out ${
+        className={`fixed inset-y-0 left-0 z-[70] w-[280px] transform transition-transform duration-200 ease-out shadow-2xl ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="relative h-full">
+        <div className="relative h-full bg-sidebar overflow-hidden">
           <Sidebar {...props} />
           <button
             onClick={() => setOpen(false)}

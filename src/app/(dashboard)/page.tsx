@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getDb, schema } from "@/lib/db";
-import { eq, and, desc, gte } from "drizzle-orm";
+import { eq, and, desc, gte, lt, lte } from "drizzle-orm";
 import { calculateDeadlines } from "@/lib/tax/deadlines";
 import { ProfitLossCard } from "@/components/dashboard/profit-loss-card";
 import { CashPositionCard } from "@/components/dashboard/cash-position-card";
@@ -13,6 +13,9 @@ import { ApArCard } from "@/components/dashboard/ap-ar-card";
 import { CrosscheckCard } from "@/components/dashboard/crosscheck-card";
 import { TaxSavingsCard } from "@/components/dashboard/tax-savings-card";
 import { BalanceCard } from "@/components/shareholders/balance-card";
+import { hasXeroConnection } from "@/lib/xero/status";
+import { generateProfitAndLoss } from "@/lib/ledger/reports/profit-loss";
+import { listInvoices } from "@/lib/invoices";
 import type { XeroInvoice } from "@/lib/xero/types";
 import { getRunningBalance } from "@/lib/shareholders/balance";
 import { calculateTaxSavings } from "@/lib/tax/savings-calculator";
@@ -32,6 +35,231 @@ import { InvoicesCard } from "@/components/dashboard/invoices-card";
 import { getBudgetOverview } from "@/lib/budget/calculations";
 import { BudgetCard } from "@/components/dashboard/budget-card";
 import { listIncomes } from "@/lib/budget";
+import { runHealthChecks, calculateHealthScore } from "@/lib/help/health-checks";
+import { HealthChecklistCard } from "@/components/dashboard/health-checklist-card";
+import { SetPageContext } from "@/components/page-context-provider";
+import { PAGE_CONTEXTS } from "@/lib/help/page-context";
+import { ActionItems, type ActionItemsData, type BankAccountAction } from "@/components/snapshot/action-items";
+import { hasChartOfAccounts } from "@/lib/ledger/accounts";
+import { getExistingOpeningBalance } from "@/lib/ledger/opening-balance";
+import { checkMinimumWage, checkKiwisaverRates } from "@/lib/employees";
+import { calculatePrescribedInterest } from "@/lib/shareholders/prescribed-interest";
+import { getUnappliedChangesCount } from "@/lib/regulatory/verify";
+import { getOptimisationSummary } from "@/lib/tax/optimisation/analyse";
+import { TaxOptimisationCard } from "@/components/dashboard/tax-optimisation-card";
+import type { XeroBankAccount } from "@/lib/xero/types";
+import { todayNZ, formatDateNZ, monthStartNZ, monthEndNZ } from "@/lib/utils/dates";
+
+function getActionItems(businessId: string): ActionItemsData {
+  const db = getDb();
+  const today = todayNZ();
+  const weekFromNow = formatDateNZ(new Date(Date.now() + 7 * 86400000));
+
+  // Bank accounts linked to this business (Akahu)
+  const akahuAccts = db
+    .select()
+    .from(schema.akahuAccounts)
+    .where(eq(schema.akahuAccounts.linked_business_id, businessId))
+    .all();
+
+  const bankAccounts: BankAccountAction[] = akahuAccts.map((acct) => {
+    const unmatchedCount = db
+      .select({ id: schema.bankTransactions.id })
+      .from(schema.bankTransactions)
+      .where(
+        and(
+          eq(schema.bankTransactions.business_id, businessId),
+          eq(schema.bankTransactions.akahu_account_id, acct.id),
+          eq(schema.bankTransactions.reconciliation_status, "unmatched")
+        )
+      )
+      .all().length;
+
+    return {
+      name: decrypt(acct.name),
+      institution: decrypt(acct.institution),
+      balance: acct.balance,
+      unmatchedCount,
+      lastSynced: acct.last_synced_at?.toISOString() ?? null,
+      source: "akahu" as const,
+    };
+  });
+
+  // Xero bank accounts (only if Xero connected)
+  if (hasXeroConnection(businessId)) {
+    const xeroBankCache = db
+      .select()
+      .from(schema.xeroCache)
+      .where(
+        and(
+          eq(schema.xeroCache.business_id, businessId),
+          eq(schema.xeroCache.entity_type, "bank_accounts")
+        )
+      )
+      .get();
+
+    if (xeroBankCache?.data) {
+      try {
+        const xeroAccounts = JSON.parse(xeroBankCache.data) as XeroBankAccount[];
+        for (const xa of xeroAccounts) {
+          if (xa.Status !== "ACTIVE") continue;
+          bankAccounts.push({
+            name: xa.Name,
+            institution: "Xero",
+            balance: 0,
+            unmatchedCount: 0,
+            lastSynced: xeroBankCache.synced_at?.toISOString() ?? null,
+            source: "xero",
+          });
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
+
+  // Draft expenses
+  const draftExpenses = db
+    .select({ id: schema.expenses.id })
+    .from(schema.expenses)
+    .where(
+      and(
+        eq(schema.expenses.business_id, businessId),
+        eq(schema.expenses.status, "draft")
+      )
+    )
+    .all().length;
+
+  // Overdue invoices (ACCREC, sent, due_date < today)
+  const overdueRows = db
+    .select({ total: schema.invoices.amount_due })
+    .from(schema.invoices)
+    .where(
+      and(
+        eq(schema.invoices.business_id, businessId),
+        eq(schema.invoices.type, "ACCREC"),
+        eq(schema.invoices.status, "sent"),
+        lt(schema.invoices.due_date, today)
+      )
+    )
+    .all();
+  const overdueInvoices = {
+    count: overdueRows.length,
+    total: overdueRows.reduce((s, r) => s + (r.total ?? 0), 0),
+  };
+
+  // Bills due this week (ACCPAY, sent, due within 7 days)
+  const billsRows = db
+    .select({ total: schema.invoices.amount_due })
+    .from(schema.invoices)
+    .where(
+      and(
+        eq(schema.invoices.business_id, businessId),
+        eq(schema.invoices.type, "ACCPAY"),
+        eq(schema.invoices.status, "sent"),
+        gte(schema.invoices.due_date, today),
+        lte(schema.invoices.due_date, weekFromNow)
+      )
+    )
+    .all();
+  const billsDueThisWeek = {
+    count: billsRows.length,
+    total: billsRows.reduce((s, r) => s + (r.total ?? 0), 0),
+  };
+
+  // Depreciation check
+  const txYear = String(getNzTaxYear(new Date()));
+  const hasAssets = db
+    .select({ id: schema.assets.id })
+    .from(schema.assets)
+    .where(
+      and(
+        eq(schema.assets.business_id, businessId),
+        eq(schema.assets.disposed, false),
+        eq(schema.assets.is_low_value, false)
+      )
+    )
+    .limit(1)
+    .all().length > 0;
+
+  let needsDepreciation = false;
+  if (hasAssets) {
+    const hasDepForYear = db
+      .select({ id: schema.assetDepreciation.id })
+      .from(schema.assetDepreciation)
+      .where(
+        and(
+          eq(schema.assetDepreciation.business_id, businessId),
+          eq(schema.assetDepreciation.tax_year, txYear)
+        )
+      )
+      .limit(1)
+      .all().length > 0;
+    needsDepreciation = !hasDepForYear;
+  }
+
+  // Opening balances check
+  const hasCoa = hasChartOfAccounts(businessId);
+  const hasXero = db
+    .select({ id: schema.xeroConnections.id })
+    .from(schema.xeroConnections)
+    .where(eq(schema.xeroConnections.business_id, businessId))
+    .limit(1)
+    .all().length > 0;
+  const hasOpeningBalance = !!getExistingOpeningBalance(businessId);
+  const needsOpeningBalances = hasCoa && !hasXero && !hasOpeningBalance;
+
+  // Employee compliance checks
+  let minWageIssues = 0;
+  let kiwisaverIssues = 0;
+  const biz = db.select().from(schema.businesses).where(eq(schema.businesses.id, businessId)).get();
+  if (biz?.has_employees) {
+    try {
+      minWageIssues = checkMinimumWage(businessId).length;
+      kiwisaverIssues = checkKiwisaverRates(businessId).length;
+    } catch { /* ignore */ }
+  }
+
+  // Prescribed interest checks
+  const prescribedInterestDue: Array<{ name: string; amount: number }> = [];
+  try {
+    const currentTaxYear = getNzTaxYear(new Date());
+    const shareholderRows = db
+      .select()
+      .from(schema.shareholders)
+      .where(eq(schema.shareholders.business_id, businessId))
+      .all();
+    for (const sh of shareholderRows) {
+      const result = calculatePrescribedInterest(businessId, sh.id, currentTaxYear);
+      if (result.totalInterest > 0 && !result.hasBeenCharged) {
+        prescribedInterestDue.push({
+          name: decrypt(sh.name),
+          amount: result.totalInterest,
+        });
+      }
+    }
+  } catch { /* ignore */ }
+
+  let regulatoryUpdates = 0;
+  try {
+    regulatoryUpdates = getUnappliedChangesCount();
+  } catch { /* no checks run yet */ }
+
+  return {
+    bankAccounts,
+    draftExpenses,
+    overdueInvoices,
+    billsDueThisWeek,
+    nextDeadline: null,
+    needsDepreciation,
+    needsOpeningBalances,
+    minWageIssues,
+    kiwisaverIssues,
+    prescribedInterestDue,
+    regulatoryUpdates,
+    taxOptimisationSavings: (() => { try { return getOptimisationSummary(businessId).totalPotentialSaving; } catch { return 0; } })(),
+  };
+}
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -41,38 +269,46 @@ export default async function DashboardPage() {
   const db = getDb();
   const businessId = session.activeBusiness.id;
 
-  // Get Xero connection status
-  const xeroConnectionRows = db
+  // Xero connection status
+  const xeroConnected = hasXeroConnection(businessId);
+
+  // Local-first: P&L from ledger
+  const taxYear = getNzTaxYear(new Date());
+  const plFrom = `${taxYear - 1}-04-01`;
+  const plTo = todayNZ();
+  let plRevenue = 0, plExpenses = 0, plNetProfit = 0, plHasData = false;
+  try {
+    const pl = generateProfitAndLoss(businessId, plFrom, plTo);
+    plRevenue = pl.revenue.total;
+    plExpenses = pl.expenses.total + pl.costOfGoodsSold.total;
+    plNetProfit = pl.netProfit;
+    plHasData = pl.revenue.accounts.length > 0 || pl.expenses.accounts.length > 0;
+  } catch { /* no ledger data yet */ }
+
+  // Local-first: bank accounts from Akahu
+  const akahuAccounts = db
     .select()
-    .from(schema.xeroConnections)
-    .where(eq(schema.xeroConnections.business_id, businessId))
-    .limit(1)
+    .from(schema.akahuAccounts)
+    .where(eq(schema.akahuAccounts.linked_business_id, businessId))
     .all();
-  const xeroConnection = xeroConnectionRows[0] || null;
+  const bankAccountInfos = akahuAccounts.map((a) => ({
+    name: decrypt(a.name),
+    balance: a.balance,
+    source: "akahu" as const,
+  }));
 
-  // Get cached Xero data
-  const cache = db
-    .select()
-    .from(schema.xeroCache)
-    .where(eq(schema.xeroCache.business_id, businessId))
-    .all();
-  const cacheMap = new Map(cache.map((c) => [c.entity_type, c]));
-
-  // Parse cached data safely
-  function getCacheData(type: string) {
-    const entry = cacheMap.get(type);
-    if (!entry) return null;
-    try {
-      return JSON.parse(entry.data);
-    } catch {
-      return null;
-    }
-  }
-
-  const profitLoss = getCacheData("profit_loss");
-  const bankAccounts = getCacheData("bank_accounts");
-  const invoicesData = getCacheData("invoices");
-  const invoices: XeroInvoice[] = invoicesData?.Invoices || [];
+  // Local-first: AP/AR from local invoices
+  const localInvoices = listInvoices(businessId);
+  const totalReceivable = localInvoices
+    .filter((inv) => inv.type === "ACCREC" && inv.amount_due > 0)
+    .reduce((sum, inv) => sum + inv.amount_due, 0);
+  const totalPayable = localInvoices
+    .filter((inv) => inv.type === "ACCPAY" && inv.amount_due > 0)
+    .reduce((sum, inv) => sum + inv.amount_due, 0);
+  const overdueCount = localInvoices
+    .filter((inv) => inv.status === "overdue" && inv.amount_due > 0)
+    .length;
+  const hasInvoiceData = localInvoices.length > 0;
 
   // Calculate upcoming deadlines
   const now = new Date();
@@ -88,6 +324,9 @@ export default async function DashboardPage() {
     has_employees: biz.has_employees,
     paye_frequency: biz.paye_frequency as "monthly" | "twice_monthly" | undefined,
     provisional_tax_method: biz.provisional_tax_method as "standard" | "estimation" | "aim" | undefined,
+    incorporation_date: biz.incorporation_date ?? undefined,
+    fbt_registered: biz.fbt_registered ?? false,
+    pays_contractors: biz.pays_contractors ?? false,
     dateRange: { from: now, to: sixMonthsOut },
   });
 
@@ -124,13 +363,21 @@ export default async function DashboardPage() {
     )
     .all().length;
 
-  // Find last sync time
-  const lastSync = cache.length > 0
-    ? new Date(Math.max(...cache.map((c) => c.synced_at.getTime())))
-    : null;
+  // Find last sync time (Xero only)
+  let lastSync: Date | null = null;
+  if (xeroConnected) {
+    const cache = db
+      .select()
+      .from(schema.xeroCache)
+      .where(eq(schema.xeroCache.business_id, businessId))
+      .all();
+    if (cache.length > 0) {
+      lastSync = new Date(Math.max(...cache.map((c) => c.synced_at.getTime())));
+    }
+  }
 
   // Get shareholder balances for dashboard
-  const taxYear = String(getNzTaxYear(now));
+  const currentTaxYearStr = String(getNzTaxYear(now));
   const shareholderRows = db
     .select()
     .from(schema.shareholders)
@@ -139,7 +386,7 @@ export default async function DashboardPage() {
 
   const shareholderBalances = await Promise.all(
     shareholderRows.map(async (s) => {
-      const balance = await getRunningBalance(s.id, taxYear, businessId);
+      const balance = await getRunningBalance(s.id, currentTaxYearStr, businessId);
       return {
         id: s.id,
         name: decrypt(s.name),
@@ -154,8 +401,8 @@ export default async function DashboardPage() {
   const contractSummary = getContractSummary(businessId);
 
   // Get expense summary for this month
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const monthStart = monthStartNZ(now);
+  const monthEnd = monthEndNZ(now);
   const expenseSummary = getExpenseSummary(businessId, monthStart, monthEnd);
 
   // Get work contract summary
@@ -172,14 +419,14 @@ export default async function DashboardPage() {
   weekStartDate.setHours(0, 0, 0, 0);
   const timesheetSummary = getTimesheetSummary(
     businessId,
-    weekStartDate.toISOString().slice(0, 10),
-    now.toISOString().slice(0, 10)
+    formatDateNZ(weekStartDate),
+    formatDateNZ(now)
   );
 
   // Get tax savings summary
   let taxSavingsData: { monthlyTarget: number; shortfallOrSurplus: number } | null = null;
   try {
-    const savings = await calculateTaxSavings(businessId, taxYear);
+    const savings = await calculateTaxSavings(businessId, currentTaxYearStr);
     taxSavingsData = {
       monthlyTarget: savings.totalToSetAside / 12,
       shortfallOrSurplus: savings.shortfallOrSurplus,
@@ -210,6 +457,22 @@ export default async function DashboardPage() {
     // Budget not set up yet
   }
 
+  // Run business health checks
+  const healthItems = runHealthChecks({
+    id: businessId,
+    entity_type: biz.entity_type,
+    balance_date: biz.balance_date,
+    gst_registered: biz.gst_registered,
+    gst_filing_period: biz.gst_filing_period,
+    has_employees: biz.has_employees,
+    paye_frequency: biz.paye_frequency,
+    provisional_tax_method: biz.provisional_tax_method,
+  });
+  const healthScore = calculateHealthScore(healthItems);
+
+  // Action items
+  const actionData = getActionItems(businessId);
+
   // Greeting based on time of day
   const hour = now.getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -217,6 +480,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-10 max-w-[1400px]">
+      <SetPageContext context={PAGE_CONTEXTS.dashboard} />
+
       {/* Dashboard header */}
       <div className="flex items-end justify-between">
         <div>
@@ -227,19 +492,25 @@ export default async function DashboardPage() {
             Here&apos;s how {biz.name} is tracking
           </p>
         </div>
-        {xeroConnection && <SyncStatus lastSync={lastSync} />}
+        {xeroConnected && <SyncStatus lastSync={lastSync} />}
       </div>
+
+      {/* Action items */}
+      <ActionItems data={actionData} />
+
+      {/* Business health checklist */}
+      <HealthChecklistCard items={healthItems} score={healthScore} />
 
       {/* Primary metrics — hero cards with gradient backgrounds */}
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         <div className="card-hero-revenue rounded-xl">
-          <ProfitLossCard data={profitLoss} connected={!!xeroConnection} />
+          <ProfitLossCard revenue={plRevenue} expenses={plExpenses} netProfit={plNetProfit} hasData={plHasData} />
         </div>
         <div className="card-hero-cash rounded-xl">
-          <CashPositionCard data={bankAccounts} connected={!!xeroConnection} />
+          <CashPositionCard accounts={bankAccountInfos} />
         </div>
         <div className="card-hero-apar rounded-xl">
-          <ApArCard invoices={invoices} connected={!!xeroConnection} />
+          <ApArCard totalReceivable={totalReceivable} totalPayable={totalPayable} overdueCount={overdueCount} hasData={hasInvoiceData} />
         </div>
       </div>
 
@@ -260,7 +531,8 @@ export default async function DashboardPage() {
               shortfallOrSurplus={taxSavingsData.shortfallOrSurplus}
             />
           )}
-          <TaxRulesStatus {...getTaxRulesStatus()} />
+          <TaxRulesStatus {...getTaxRulesStatus()} pendingUpdates={actionData.regulatoryUpdates} />
+          <TaxOptimisationCard />
         </div>
       </div>
 
@@ -294,10 +566,12 @@ export default async function DashboardPage() {
             monthTotal={expenseSummary.grandTotal}
             topCategory={expenseSummary.byCategory[0] || null}
           />
-          <CrosscheckCard
-            newAnomalyCount={newAnomalyCount}
-            recentChangeCount={recentChangeCount}
-          />
+          {xeroConnected && (
+            <CrosscheckCard
+              newAnomalyCount={newAnomalyCount}
+              recentChangeCount={recentChangeCount}
+            />
+          )}
         </div>
       </div>
 

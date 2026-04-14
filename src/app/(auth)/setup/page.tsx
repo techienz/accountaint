@@ -59,11 +59,11 @@ export default function SetupPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Your name</Label>
-            <Input id="name" name="name" required autoFocus placeholder="e.g. Jane" />
+            <Input id="name" name="name" required autoFocus placeholder="e.g. John" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" required placeholder="e.g. you@example.com" />
+            <Input id="email" name="email" type="email" required placeholder="e.g. john@example.com" />
             <p className="text-xs text-muted-foreground">
               Used as your username to sign in
             </p>

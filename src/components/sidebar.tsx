@@ -24,6 +24,7 @@ import {
   FileBarChart,
   ShieldCheck,
   Users,
+  UserPlus,
   FileSpreadsheet,
   PiggyBank,
   Package,
@@ -39,10 +40,12 @@ import {
   Timer,
   Contact2,
   Wallet,
+  BookOpen,
   Plane,
   ArrowLeftRight,
   Sun,
   Moon,
+  Banknote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BusinessSwitcher } from "./business-switcher";
@@ -55,10 +58,9 @@ type NavItem = {
   children?: { href: string; label: string; icon: React.ElementType; requiresEmployees?: boolean }[];
 };
 
-function buildNavItems(hasEmployees: boolean): NavItem[] {
+function buildNavItems(hasEmployees: boolean, xeroConnected: boolean): NavItem[] {
   return [
     { href: "/", label: "Overview", icon: LayoutDashboard },
-    { href: "/snapshot", label: "Business Snapshot", icon: BarChart3 },
     {
       href: "/deadlines",
       label: "Deadlines & Tax",
@@ -69,6 +71,7 @@ function buildNavItems(hasEmployees: boolean): NavItem[] {
         { href: "/tax-prep", label: "Tax Prep", icon: FileSpreadsheet },
         { href: "/tax-savings", label: "Tax Savings", icon: PiggyBank },
         { href: "/shareholders", label: "Shareholders", icon: Users },
+        { href: "/tax-optimisation", label: "Tax Optimisation", icon: TrendingUp },
       ],
     },
     {
@@ -94,10 +97,12 @@ function buildNavItems(hasEmployees: boolean): NavItem[] {
       collapsibleKey: "earn",
       children: [
         { href: "/work-contracts", label: "Work Contracts", icon: Briefcase },
+        { href: "/work-contracts/wt-advisor", label: "WT Advisor", icon: Calculator },
         { href: "/timesheets", label: "Timesheets", icon: Timer },
         { href: "/invoices", label: "Invoices", icon: Receipt },
       ],
     },
+    { href: "/banking/reconcile", label: "Banking", icon: Landmark },
     {
       href: "/expenses",
       label: "Spend",
@@ -142,23 +147,42 @@ function buildNavItems(hasEmployees: boolean): NavItem[] {
         { href: "/calculators/acc", label: "ACC Levies", icon: Shield },
       ],
     },
-    {
+    { href: "/notifications", label: "Notifications", icon: Bell },
+    ...(xeroConnected ? [{
       href: "/crosscheck",
-      label: "Monitor",
+      label: "Xero Monitor",
       icon: ShieldCheck,
-      collapsibleKey: "monitor",
+      collapsibleKey: "monitor" as const,
       children: [
         { href: "/crosscheck", label: "Cross-check", icon: ShieldCheck },
-        { href: "/notifications", label: "Notifications", icon: Bell },
+        { href: "/reports/comparison", label: "Ledger vs Xero", icon: BarChart3 },
       ],
-    },
+    }] : []),
+    ...(hasEmployees
+      ? [{
+          href: "/employees",
+          label: "People",
+          icon: Users,
+          collapsibleKey: "employees" as const,
+          children: [
+            { href: "/employees", label: "Employees", icon: Users },
+            { href: "/employees/new", label: "Add Employee", icon: UserPlus },
+            { href: "/payroll", label: "Payroll", icon: Banknote },
+          ],
+        }]
+      : []),
     {
       href: "/settings",
       label: "Settings",
       icon: Settings,
       collapsibleKey: "settings",
       children: [
-        { href: "/settings/xero", label: "Xero", icon: Link2 },
+        ...(xeroConnected ? [{ href: "/settings/xero", label: "Xero", icon: Link2 }] : []),
+        { href: "/settings/bank-feeds", label: "Bank Feeds", icon: ArrowLeftRight },
+        { href: "/settings/chart-of-accounts", label: "Chart of Accounts", icon: BookOpen },
+        { href: "/settings/opening-balances", label: "Opening Balances", icon: Scale },
+        { href: "/settings/migration", label: "Migration", icon: ArrowLeftRight },
+        { href: "/settings/regulatory-updates", label: "Regulatory Updates", icon: ShieldCheck },
         { href: "/settings/notifications", label: "Notifications", icon: Bell },
         { href: "/settings", label: "General", icon: Settings },
       ],
@@ -171,9 +195,10 @@ type SidebarProps = {
   businesses: { id: string; name: string }[];
   activeBusinessId: string | null;
   hasEmployees?: boolean;
+  xeroConnected?: boolean;
 };
 
-export function Sidebar({ userName, businesses, activeBusinessId, hasEmployees = false }: SidebarProps) {
+export function Sidebar({ userName, businesses, activeBusinessId, hasEmployees = false, xeroConnected }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -186,11 +211,11 @@ export function Sidebar({ userName, businesses, activeBusinessId, hasEmployees =
     spend: pathname.startsWith("/contracts") || pathname.startsWith("/expenses") || pathname.startsWith("/assets"),
     personal: pathname.startsWith("/budget"),
     calculators: pathname.startsWith("/calculators"),
-    monitor: pathname.startsWith("/crosscheck") || pathname.startsWith("/notifications"),
+    monitor: pathname.startsWith("/crosscheck"),
     settings: pathname.startsWith("/settings"),
   });
 
-  const navItems = buildNavItems(hasEmployees);
+  const navItems = buildNavItems(hasEmployees, xeroConnected ?? false);
 
   function toggleSection(key: string) {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -242,11 +267,11 @@ export function Sidebar({ userName, businesses, activeBusinessId, hasEmployees =
                     "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200",
                     isChildActive
                       ? "text-sidebar-foreground font-medium"
-                      : "text-sidebar-foreground/45 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/75"
+                      : "text-sidebar-foreground/85 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                   )}
                 >
                   <span className="flex items-center gap-3">
-                    <item.icon className="h-[18px] w-[18px] opacity-70" />
+                    <item.icon className="h-[18px] w-[18px] opacity-85" />
                     {item.label}
                   </span>
                   {isOpen ? (
@@ -267,7 +292,7 @@ export function Sidebar({ userName, businesses, activeBusinessId, hasEmployees =
                             "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[0.8rem] transition-all duration-200",
                             isActive
                               ? "bg-sidebar-primary/15 text-sidebar-primary font-medium"
-                              : "text-sidebar-foreground/40 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground/65"
+                              : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"
                           )}
                         >
                           <child.icon className="h-3.5 w-3.5" />
@@ -293,10 +318,10 @@ export function Sidebar({ userName, businesses, activeBusinessId, hasEmployees =
                 "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200",
                 isActive
                   ? "bg-sidebar-primary/15 text-sidebar-primary font-medium"
-                  : "text-sidebar-foreground/45 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/75"
+                  : "text-sidebar-foreground/85 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
               )}
             >
-              <item.icon className={cn("h-[18px] w-[18px]", isActive ? "text-sidebar-primary" : "opacity-60")} />
+              <item.icon className={cn("h-[18px] w-[18px]", isActive ? "text-sidebar-primary" : "opacity-80")} />
               {item.label}
             </Link>
           );

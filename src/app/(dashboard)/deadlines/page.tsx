@@ -1,13 +1,17 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { calculateDeadlines } from "@/lib/tax/deadlines";
+import { parseDateLocal } from "@/lib/utils/dates";
 import type { DeadlineInput } from "@/lib/tax/deadlines";
 import { getUrgencyInfo, typeColors, typeLabels } from "@/lib/tax/urgency";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExplainButton } from "@/components/explain-button";
+import { SetPageContext } from "@/components/page-context-provider";
+import { PAGE_CONTEXTS } from "@/lib/help/page-context";
 
 function formatDisplayDate(dateStr: string): string {
-  const date = new Date(dateStr + "T00:00:00");
+  const date = parseDateLocal(dateStr);
   return date.toLocaleDateString("en-NZ", {
     weekday: "short",
     day: "numeric",
@@ -45,6 +49,9 @@ export default async function DeadlinesPage() {
     has_employees: business.has_employees,
     paye_frequency: business.paye_frequency as DeadlineInput["paye_frequency"],
     provisional_tax_method: business.provisional_tax_method as DeadlineInput["provisional_tax_method"],
+    incorporation_date: business.incorporation_date ?? undefined,
+    fbt_registered: business.fbt_registered ?? false,
+    pays_contractors: business.pays_contractors ?? false,
     dateRange: { from, to },
   };
 
@@ -52,11 +59,15 @@ export default async function DeadlinesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Tax Deadlines</h1>
-        <p className="text-muted-foreground">
-          Upcoming tax obligations for {business.name} — next 12 months
-        </p>
+      <SetPageContext context={PAGE_CONTEXTS.deadlines} />
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Tax Deadlines</h1>
+          <p className="text-muted-foreground">
+            Upcoming tax obligations for {business.name} — next 12 months
+          </p>
+        </div>
+        <ExplainButton context={PAGE_CONTEXTS.deadlines} />
       </div>
 
       {deadlines.length === 0 ? (

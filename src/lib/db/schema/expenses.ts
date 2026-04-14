@@ -30,6 +30,7 @@ export const expenses = sqliteTable("expenses", {
   receipt_mime: text("receipt_mime"),
   xero_invoice_id: text("xero_invoice_id"),
   ocr_raw: text("ocr_raw"), // JSON
+  linked_asset_id: text("linked_asset_id"),
   status: text("status", {
     enum: ["draft", "confirmed"],
   })

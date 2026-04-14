@@ -54,13 +54,22 @@ export default function ShareholderDetailPage() {
     if (res.ok) router.push("/shareholders");
   }
 
+  const [prescribedInterest, setPrescribedInterest] = useState<{
+    totalInterest: number;
+    daysOverdrawn: number;
+    prescribedRate: number;
+    hasBeenCharged: boolean;
+  } | null>(null);
+
   const loadData = useCallback(async () => {
-    const [shRes, txRes] = await Promise.all([
+    const [shRes, txRes, piRes] = await Promise.all([
       fetch(`/api/shareholders/${params.id}`),
       fetch(`/api/shareholders/${params.id}/transactions?tax_year=${taxYear}`),
+      fetch(`/api/shareholders/${params.id}/prescribed-interest?tax_year=${taxYear}`),
     ]);
     if (shRes.ok) setShareholder(await shRes.json());
     if (txRes.ok) setBalance(await txRes.json());
+    if (piRes.ok) setPrescribedInterest(await piRes.json());
   }, [params.id, taxYear]);
 
   useEffect(() => {
@@ -178,6 +187,32 @@ export default function ShareholderDetailPage() {
                 ))}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {prescribedInterest && prescribedInterest.totalInterest > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Prescribed Interest</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between text-sm">
+              <span>
+                Interest at {(prescribedInterest.prescribedRate * 100).toFixed(2)}% for{" "}
+                {prescribedInterest.daysOverdrawn} days overdrawn
+              </span>
+              <span className="font-medium">{fmt(prescribedInterest.totalInterest)}</span>
+            </div>
+            {prescribedInterest.hasBeenCharged ? (
+              <p className="text-sm text-green-600">
+                Interest has been charged for this tax year.
+              </p>
+            ) : (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950">
+                This interest should be charged to avoid the shortfall being treated as a deemed dividend.
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

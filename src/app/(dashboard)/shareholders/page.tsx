@@ -10,6 +10,9 @@ import { BalanceCard } from "@/components/shareholders/balance-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { redirect } from "next/navigation";
+import { ExplainButton } from "@/components/explain-button";
+import { SetPageContext } from "@/components/page-context-provider";
+import { PAGE_CONTEXTS } from "@/lib/help/page-context";
 
 export default async function ShareholdersPage() {
   const session = await getSession();
@@ -37,8 +40,11 @@ export default async function ShareholdersPage() {
     })
   );
 
+  const shContext = PAGE_CONTEXTS.shareholders;
+
   return (
     <div className="space-y-6">
+      <SetPageContext context={shContext} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Shareholders</h1>
@@ -46,12 +52,15 @@ export default async function ShareholdersPage() {
             Current account balances for {taxYear} tax year
           </p>
         </div>
-        <Link href="/shareholders/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Shareholder
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExplainButton context={shContext} />
+          <Link href="/shareholders/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Shareholder
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {shareholderData.length === 0 ? (

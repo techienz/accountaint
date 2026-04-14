@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
+import Link from "next/link";
 import { BusinessForm } from "@/components/business-form";
 import { ChangePasswordForm } from "./change-password-form";
-import { KnowledgeManager } from "./knowledge-manager";
 
 export default async function SettingsPage({
   searchParams,
@@ -38,11 +38,16 @@ export default async function SettingsPage({
       <BusinessForm business={business} />
 
       <div className="border-t pt-8">
-        <h2 className="text-lg font-semibold mb-1">IRD Knowledge Base</h2>
+        <h2 className="text-lg font-semibold mb-1">Tax Rules & Knowledge</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Tax knowledge used by the AI assistant. Seed from built-in sources or download the latest IRD guide PDFs.
+          Verify tax rules against current IRD sources and manage IRD knowledge base.
         </p>
-        <KnowledgeManager />
+        <Link
+          href="/settings/regulatory-updates"
+          className="inline-flex items-center gap-2 text-sm text-primary hover:underline font-medium"
+        >
+          Manage Regulatory Updates &rarr;
+        </Link>
       </div>
 
       <div className="border-t pt-8">

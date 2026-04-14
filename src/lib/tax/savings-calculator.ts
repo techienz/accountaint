@@ -121,11 +121,43 @@ export async function calculateTaxSavings(
 
   if (plCache) {
     // Primary: use Xero P&L for profit estimate
-    const plData = JSON.parse(plCache.data);
-    const revenue = Math.abs(plData.Revenue?.total || 0);
-    const expenses = Math.abs(plData.Expenses?.total || 0);
-    estimatedProfit = revenue - expenses;
-    incomeSource = "xero";
+    try {
+      const plRaw = JSON.parse(plCache.data);
+      // Xero wraps reports in { Reports: [...] } — unwrap if needed
+      const plReport = plRaw?.Reports?.[0] ?? plRaw;
+
+      if (plReport?.Rows) {
+        // Parse standard Xero P&L report format
+        let revenue = 0;
+        let expenses = 0;
+        for (const section of plReport.Rows) {
+          if (section.RowType !== "Section" || !section.Title) continue;
+          const title = section.Title.toLowerCase();
+          // Find the total row within the section
+          const totalRow = section.Rows?.find(
+            (r: { RowType: string }) => r.RowType === "SummaryRow"
+          );
+          const val = Math.abs(
+            parseFloat(totalRow?.Cells?.[1]?.Value ?? "0")
+          );
+          if (title.includes("revenue") || title.includes("income")) {
+            revenue = val;
+          } else if (title.includes("expense") || title.includes("cost")) {
+            expenses += val;
+          }
+        }
+        estimatedProfit = revenue - expenses;
+        if (revenue > 0) incomeSource = "xero";
+      } else if (plRaw?.Revenue?.total != null) {
+        // Already-parsed summary format
+        const revenue = Math.abs(plRaw.Revenue.total);
+        const expenses = Math.abs(plRaw.Expenses?.total || 0);
+        estimatedProfit = revenue - expenses;
+        incomeSource = "xero";
+      }
+    } catch {
+      // P&L cache is corrupt or unreadable — fall through to next source
+    }
   }
 
   if (estimatedProfit === 0) {

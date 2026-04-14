@@ -31,14 +31,14 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    // Save PDF to disk
-    fs.mkdirSync(GUIDES_DIR, { recursive: true });
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const filePath = path.join(GUIDES_DIR, `${guideCode}.pdf`);
-    fs.writeFileSync(filePath, buffer);
+  // Save PDF to disk first (always succeeds)
+  fs.mkdirSync(GUIDES_DIR, { recursive: true });
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const filePath = path.join(GUIDES_DIR, `${guideCode}.pdf`);
+  fs.writeFileSync(filePath, buffer);
 
-    // Ingest it
+  // Try to ingest (create embeddings) — requires LM Studio
+  try {
     const count = await ingestGuide({
       code: guideCode,
       title,
@@ -48,10 +48,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, chunksIngested: count });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error(`[api/knowledge/upload] Error:`, msg);
-    return NextResponse.json(
-      { error: `Upload failed: ${msg}` },
-      { status: 500 }
-    );
+    const isLmStudio = msg.includes("LM Studio");
+    console.error(`[api/knowledge/upload] Ingest failed:`, msg);
+    return NextResponse.json({
+      success: true,
+      chunksIngested: 0,
+      warning: isLmStudio
+        ? "PDF saved but not indexed — start LM Studio to enable AI search over this guide."
+        : `PDF saved but indexing failed: ${msg}`,
+    });
   }
 }

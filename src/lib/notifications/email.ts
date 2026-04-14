@@ -19,7 +19,8 @@ export async function sendEmail(
   config: SmtpConfig,
   subject: string,
   html: string,
-  attachments?: EmailAttachment[]
+  attachments?: EmailAttachment[],
+  cc?: string[]
 ): Promise<void> {
   const transporter = nodemailer.createTransport({
     host: config.smtp_host,
@@ -34,6 +35,7 @@ export async function sendEmail(
   await transporter.sendMail({
     from: config.from_address,
     to: config.to_address,
+    cc: cc && cc.length > 0 ? cc.join(", ") : undefined,
     subject,
     html: wrapHtml(html),
     attachments: attachments?.map((a) => ({

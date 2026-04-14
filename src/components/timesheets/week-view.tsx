@@ -2,6 +2,7 @@
 
 import { EntryCard } from "./entry-card";
 import { Plus } from "lucide-react";
+import { parseDateLocal } from "@/lib/utils/dates";
 
 type Entry = {
   id: string;
@@ -43,7 +44,7 @@ export function WeekView({
               <div>
                 <span className="text-xs font-medium">{dayNames[i]}</span>
                 <span className="text-xs text-muted-foreground ml-1.5">
-                  {new Date(date + "T00:00:00").getDate()}
+                  {parseDateLocal(date).getDate()}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">

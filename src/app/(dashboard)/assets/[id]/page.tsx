@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { todayNZ } from "@/lib/utils/dates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,8 @@ type AssetDetail = {
   disposal_date: string | null;
   disposal_price: number | null;
   notes: string | null;
+  receipt_path: string | null;
+  receipt_mime: string | null;
   depreciationHistory: DepRecord[];
 };
 
@@ -47,9 +50,7 @@ export default function AssetDetailPage() {
   const [asset, setAsset] = useState<AssetDetail | null>(null);
   const [showDispose, setShowDispose] = useState(false);
   const [salePrice, setSalePrice] = useState("");
-  const [disposalDate, setDisposalDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [disposalDate, setDisposalDate] = useState(todayNZ());
 
   useEffect(() => {
     fetch(`/api/assets/${params.id}`)
@@ -160,6 +161,32 @@ export default function AssetDetailPage() {
               </div>
             </div>
             <Button onClick={handleDispose}>Confirm Disposal</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {asset.receipt_path && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Receipt / Proof of Purchase</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {asset.receipt_mime?.startsWith("image/") ? (
+              <img
+                src={`/api/assets/${asset.id}/receipt`}
+                alt="Receipt"
+                className="max-w-md rounded border"
+              />
+            ) : (
+              <a
+                href={`/api/assets/${asset.id}/receipt`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                View receipt (PDF)
+              </a>
+            )}
           </CardContent>
         </Card>
       )}

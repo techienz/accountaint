@@ -18,6 +18,8 @@ type WorkContractInput = {
   end_date?: string | null;
   wt_rate: number;
   document_id?: string | null;
+  project_name?: string | null;
+  project_code?: string | null;
   notes?: string | null;
 };
 
@@ -139,6 +141,8 @@ export function createWorkContract(businessId: string, data: WorkContractInput) 
       end_date: data.end_date ?? null,
       wt_rate: data.wt_rate,
       document_id: data.document_id ?? null,
+      project_name: data.project_name ?? null,
+      project_code: data.project_code ?? null,
       status,
       notes: data.notes ?? null,
     })
@@ -178,6 +182,8 @@ export function updateWorkContract(
   if (data.end_date !== undefined) updates.end_date = data.end_date;
   if (data.wt_rate !== undefined) updates.wt_rate = data.wt_rate;
   if (data.document_id !== undefined) updates.document_id = data.document_id;
+  if (data.project_name !== undefined) updates.project_name = data.project_name;
+  if (data.project_code !== undefined) updates.project_code = data.project_code;
   if (data.notes !== undefined) updates.notes = data.notes;
 
   if (data.status === "cancelled" || data.status === "completed") {

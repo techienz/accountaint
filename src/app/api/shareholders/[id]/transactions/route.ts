@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { shareholderTransactions, shareholders } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getRunningBalance } from "@/lib/shareholders/balance";
+import { postShareholderJournal } from "@/lib/ledger/post";
 
 export async function GET(
   request: NextRequest,
@@ -74,6 +75,19 @@ export async function POST(
     description: description || null,
     amount,
   });
+
+  // Post journal entry
+  try {
+    postShareholderJournal(business.id, {
+      id: txId,
+      date,
+      type,
+      amount,
+      description: description || undefined,
+    });
+  } catch (e) {
+    console.error("[ledger] Failed to post shareholder journal:", e);
+  }
 
   return NextResponse.json({ id: txId }, { status: 201 });
 }

@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import type { XeroInvoice } from "@/lib/xero/types";
+import { postSalesInvoiceJournal, postPurchaseInvoiceJournal, postInvoiceReversal } from "@/lib/ledger/post";
 
 type InvoiceType = "ACCREC" | "ACCPAY";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "void";
@@ -370,6 +371,23 @@ export function markInvoiceSent(id: string, businessId: string) {
     .where(eq(schema.invoices.id, id))
     .run();
 
+  // Post journal entry
+  try {
+    const lineItems = db
+      .select()
+      .from(schema.invoiceLineItems)
+      .where(eq(schema.invoiceLineItems.invoice_id, id))
+      .all();
+
+    if (existing.type === "ACCREC") {
+      postSalesInvoiceJournal(businessId, existing);
+    } else {
+      postPurchaseInvoiceJournal(businessId, existing, lineItems);
+    }
+  } catch (e) {
+    console.error("[ledger] Failed to post invoice journal:", e);
+  }
+
   return getInvoice(id, businessId);
 }
 
@@ -391,6 +409,14 @@ export function voidInvoice(id: string, businessId: string) {
     .set({ status: "void", updated_at: new Date() })
     .where(eq(schema.invoices.id, id))
     .run();
+
+  // Reverse journal entry
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    postInvoiceReversal(businessId, id, today);
+  } catch (e) {
+    console.error("[ledger] Failed to reverse invoice journal:", e);
+  }
 
   return getInvoice(id, businessId);
 }

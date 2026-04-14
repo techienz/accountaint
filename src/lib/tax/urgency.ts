@@ -1,3 +1,5 @@
+import { parseDateLocal } from "@/lib/utils/dates";
+
 export type UrgencyInfo = {
   variant: "default" | "secondary" | "destructive" | "outline";
   label: string;
@@ -8,7 +10,7 @@ export type UrgencyInfo = {
 export function getUrgencyInfo(dueDateStr: string): UrgencyInfo {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dueDate = new Date(dueDateStr + "T00:00:00");
+  const dueDate = parseDateLocal(dueDateStr);
   const diffMs = dueDate.getTime() - today.getTime();
   const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
@@ -51,6 +53,10 @@ export const typeColors: Record<string, string> = {
   paye: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400",
   ir4: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
   ir3: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
+  annual_return: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+  acc_levy: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+  fbt: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400",
+  schedular_payment: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
 };
 
 export const typeLabels: Record<string, string> = {
@@ -60,6 +66,10 @@ export const typeLabels: Record<string, string> = {
   paye: "PAYE",
   ir4: "IR4",
   ir3: "IR3",
+  annual_return: "Annual Return",
+  acc_levy: "ACC Levy",
+  fbt: "FBT",
+  schedular_payment: "Schedular Payment",
 };
 
 export const statusColors: Record<string, string> = {

@@ -7,7 +7,7 @@ export class LmStudioUnavailableError extends Error {
   }
 }
 
-const EMBEDDING_MODEL = process.env.LMSTUDIO_EMBEDDING_MODEL || "nomic-ai/nomic-embed-text-v2-moe";
+const EMBEDDING_MODEL = (process.env.LMSTUDIO_EMBEDDING_MODEL || "").trim() || "nomic-ai/nomic-embed-text-v2-moe";
 const MAX_BATCH_SIZE = 32;
 
 export async function embed(text: string): Promise<number[]> {
@@ -20,7 +20,11 @@ export async function embed(text: string): Promise<number[]> {
     input: text,
   });
 
-  return response.data[0].embedding;
+  const vec = response.data[0].embedding;
+  if (vec.length !== 768) {
+    console.warn(`[embeddings] Unexpected dimension ${vec.length} from model ${EMBEDDING_MODEL} (expected 768)`);
+  }
+  return vec;
 }
 
 export async function embedBatch(texts: string[]): Promise<number[][]> {

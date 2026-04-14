@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 
 type Expense = {
@@ -19,6 +20,7 @@ type Expense = {
   receipt_mime: string | null;
   status: string;
   ocr_raw: string | null;
+  linked_asset_id: string | null;
 };
 
 const categoryLabels: Record<string, string> = {
@@ -101,6 +103,53 @@ export default function ExpenseDetailPage() {
           <Button variant="destructive" onClick={handleDelete}>Delete</Button>
         </div>
       </div>
+
+      {expense.status === "confirmed" &&
+        !expense.linked_asset_id &&
+        expense.amount >= 1000 &&
+        ["office_supplies", "software_subscriptions", "vehicle", "other"].includes(expense.category) && (
+        <Alert className="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950">
+          <AlertDescription className="flex items-center justify-between">
+            <span>
+              This {fmt(expense.amount)} purchase could be a fixed asset with tax depreciation benefits.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const exGst = expense.gst_amount
+                  ? expense.amount - expense.gst_amount
+                  : expense.amount;
+                const categoryMap: Record<string, string> = {
+                  office_supplies: "Computers",
+                  software_subscriptions: "Software",
+                  vehicle: "Motor Vehicles",
+                  other: "Office Equipment",
+                };
+                const params = new URLSearchParams({
+                  name: expense.vendor,
+                  cost: exGst.toFixed(2),
+                  purchase_date: expense.date,
+                  category: categoryMap[expense.category] || "Office Equipment",
+                  from_expense_id: expense.id,
+                });
+                router.push(`/assets/new?${params.toString()}`);
+              }}
+            >
+              Add to Asset Register
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {expense.linked_asset_id && (
+        <p className="text-sm text-muted-foreground">
+          Linked to asset:{" "}
+          <a href={`/assets/${expense.linked_asset_id}`} className="text-primary hover:underline">
+            View asset
+          </a>
+        </p>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>

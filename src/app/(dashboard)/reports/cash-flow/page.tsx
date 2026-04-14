@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { getDb, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { listInvoices } from "@/lib/invoices";
 import { ReportHeader } from "@/components/reports/report-header";
 import { formatNzd } from "@/lib/reports/parsers";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,8 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { XeroInvoice } from "@/lib/xero/types";
-import { parseXeroDate } from "@/lib/xero/dates";
 
 type MonthlyFlow = {
   month: string;
@@ -23,15 +20,17 @@ type MonthlyFlow = {
   net: number;
 };
 
-function groupByMonth(invoices: XeroInvoice[]): MonthlyFlow[] {
+function groupByMonth(
+  invoices: ReturnType<typeof listInvoices>
+): MonthlyFlow[] {
   const monthMap = new Map<string, { inflows: number; outflows: number }>();
 
   for (const inv of invoices) {
     // Only count paid invoices as cash flow
-    if (inv.AmountPaid <= 0) continue;
+    if (inv.status !== "paid") continue;
 
-    const date = parseXeroDate(inv.Date);
-    if (isNaN(date.getTime())) continue; // skip unparseable dates
+    const date = new Date(inv.date);
+    if (isNaN(date.getTime())) continue;
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 
     if (!monthMap.has(key)) {
@@ -39,10 +38,10 @@ function groupByMonth(invoices: XeroInvoice[]): MonthlyFlow[] {
     }
 
     const entry = monthMap.get(key)!;
-    if (inv.Type === "ACCREC") {
-      entry.inflows += inv.AmountPaid;
+    if (inv.type === "ACCREC") {
+      entry.inflows += inv.total;
     } else {
-      entry.outflows += inv.AmountPaid;
+      entry.outflows += inv.total;
     }
   }
 
@@ -56,25 +55,20 @@ function groupByMonth(invoices: XeroInvoice[]): MonthlyFlow[] {
     }));
 }
 
+function formatMonth(key: string): string {
+  const [y, m] = key.split("-");
+  const d = new Date(parseInt(y), parseInt(m) - 1);
+  return d.toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
+}
+
 export default async function CashFlowPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (!session.activeBusiness) redirect("/settings?new=true");
 
   const biz = session.activeBusiness;
-  const db = getDb();
 
-  const cached = db
-    .select()
-    .from(schema.xeroCache)
-    .where(eq(schema.xeroCache.business_id, biz.id))
-    .all()
-    .find((c) => c.entity_type === "invoices");
-
-  const invoices: XeroInvoice[] = cached
-    ? (JSON.parse(cached.data)?.Invoices || [])
-    : [];
-
+  const invoices = listInvoices(biz.id);
   const monthlyFlows = groupByMonth(invoices);
 
   const totalInflows = monthlyFlows.reduce((sum, m) => sum + m.inflows, 0);
@@ -87,7 +81,7 @@ export default async function CashFlowPage() {
         <CardContent className="pt-6">
           {monthlyFlows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No invoice data. Sync from Xero to see cash flow.
+              No paid invoices recorded yet. Mark invoices as paid to see cash flow here.
             </p>
           ) : (
             <Table>
@@ -102,9 +96,7 @@ export default async function CashFlowPage() {
               <TableBody>
                 {monthlyFlows.map((m) => (
                   <TableRow key={m.month}>
-                    <TableCell>
-                      {formatMonth(m.month)}
-                    </TableCell>
+                    <TableCell>{formatMonth(m.month)}</TableCell>
                     <TableCell className="text-right text-green-600">
                       ${formatNzd(m.inflows)}
                     </TableCell>
@@ -144,10 +136,4 @@ export default async function CashFlowPage() {
       </Card>
     </>
   );
-}
-
-function formatMonth(key: string): string {
-  const [y, m] = key.split("-");
-  const d = new Date(parseInt(y), parseInt(m) - 1);
-  return d.toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
 }

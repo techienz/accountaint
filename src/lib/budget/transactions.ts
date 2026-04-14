@@ -220,12 +220,12 @@ export function previewImport(csvText: string): ParseResult & { total: number } 
 
 // ── Category matching ───────────────────────────────────────────────
 
-type CategoryMapEntry = {
+export type CategoryMapEntry = {
   categoryId: string;
   keywords: string[];
 };
 
-function buildCategoryMap(userId: string): CategoryMapEntry[] {
+export function buildCategoryMap(userId: string): CategoryMapEntry[] {
   const recurring = listRecurringItems(userId);
   const categories = listCategories(userId);
 
@@ -243,7 +243,7 @@ function buildCategoryMap(userId: string): CategoryMapEntry[] {
   }));
 }
 
-function matchCategory(
+export function matchCategory(
   description: string,
   categoryMap: CategoryMapEntry[]
 ): { categoryId: string } | null {

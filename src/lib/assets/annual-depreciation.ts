@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db";
 import { assets, assetDepreciation } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { calculateAnnualDepreciation } from "@/lib/tax/depreciation";
+import { postDepreciationJournal } from "@/lib/ledger/post";
 
 export type DepreciationRunResult = {
   assetsProcessed: number;
@@ -107,6 +108,19 @@ export async function runAnnualDepreciation(
       depreciation_amount: dep.depreciationAmount,
       closing_book_value: dep.closingBookValue,
     });
+
+    // Post journal entry for depreciation
+    const depRecordId = existingDep?.id ?? crypto.randomUUID();
+    try {
+      postDepreciationJournal(businessId, {
+        id: depRecordId,
+        tax_year: taxYear,
+        depreciation_amount: dep.depreciationAmount,
+        asset_name: asset.name,
+      });
+    } catch (e) {
+      console.error("[ledger] Failed to post depreciation journal:", e);
+    }
 
     results.push({
       assetId: asset.id,

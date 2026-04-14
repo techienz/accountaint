@@ -1,4 +1,5 @@
 import type { GstPeriod } from "./calculator";
+import { formatDateNZ, parseDateLocal } from "@/lib/utils/dates";
 
 export function generateGstPeriods(
   filingPeriod: string,
@@ -47,8 +48,8 @@ export function generateGstPeriods(
     const from = new Date(to.getFullYear(), to.getMonth() - intervalMonths + 1, 1);
 
     periods.push({
-      from: from.toISOString().slice(0, 10),
-      to: to.toISOString().slice(0, 10),
+      from: formatDateNZ(from),
+      to: formatDateNZ(to),
     });
 
     periodEnd = new Date(from.getFullYear(), from.getMonth(), 0);
@@ -58,7 +59,7 @@ export function generateGstPeriods(
 }
 
 export function formatPeriod(from: string, to: string): string {
-  const f = new Date(from + "T00:00:00");
-  const t = new Date(to + "T00:00:00");
+  const f = parseDateLocal(from);
+  const t = parseDateLocal(to);
   return `${f.toLocaleDateString("en-NZ", { month: "short", year: "numeric" })} — ${t.toLocaleDateString("en-NZ", { month: "short", year: "numeric" })}`;
 }

@@ -43,6 +43,8 @@ export default function NewWorkContractPage() {
       start_date: form.get("start_date"),
       end_date: form.get("end_date") || null,
       wt_rate: Number(form.get("wt_rate")),
+      project_name: form.get("project_name") || null,
+      project_code: form.get("project_code") || null,
       notes: form.get("notes") || null,
     };
 
@@ -142,6 +144,17 @@ export default function NewWorkContractPage() {
               <div>
                 <Label htmlFor="end_date">End Date</Label>
                 <Input id="end_date" name="end_date" type="date" placeholder="Leave blank for ongoing" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="project_name">Project Name</Label>
+                <Input id="project_name" name="project_name" placeholder="e.g. Digital Transformation" />
+              </div>
+              <div>
+                <Label htmlFor="project_code">Project Code</Label>
+                <Input id="project_code" name="project_code" placeholder="e.g. DT-2026-041" />
               </div>
             </div>
 

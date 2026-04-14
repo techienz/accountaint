@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { getSession } from "@/lib/auth";
 import { ingestGuide } from "@/lib/knowledge/ingest";
+import { checkLmStudioHealth } from "@/lib/lmstudio/client";
 
 const GUIDES_DIR = "data/ird-guides";
 
@@ -14,6 +15,20 @@ export async function POST() {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Check LM Studio first — no point scanning if embeddings won't work
+  const lmStudioAvailable = await checkLmStudioHealth();
+  if (!lmStudioAvailable) {
+    return NextResponse.json(
+      {
+        error:
+          "LM Studio is not running. Start LM Studio with an embedding model (e.g. nomic-embed-text-v2) to scan and index PDFs. The app needs LM Studio at " +
+          (process.env.LMSTUDIO_URL || "http://localhost:1234/v1") +
+          " to create searchable embeddings from your documents.",
+      },
+      { status: 503 }
+    );
   }
 
   if (!fs.existsSync(GUIDES_DIR)) {
@@ -31,17 +46,25 @@ export async function POST() {
     return NextResponse.json({ error: "No PDF files found" }, { status: 404 });
   }
 
-  let total = 0;
-  const results: { file: string; code: string; chunks: number; error?: string }[] = [];
-
+  // Deduplicate by guide code — prefer the clean filename (e.g. "IR776.pdf" over "IR776 2023.pdf")
+  const codeToFile = new Map<string, string>();
   for (const file of files) {
-    // Extract guide code: "IR265 July 2025.pdf" -> "IR265", "IR4GU 2025.pdf" -> "IR4GU", "IR10G-2026.pdf" -> "IR10G"
     const baseName = file.replace(/\.pdf$/i, "");
     const code = baseName
       .replace(/[\s-]+\d{4}.*$/, "")  // strip " 2025", "-2026", " July 2025" etc
       .replace(/\s+/g, "")            // strip remaining spaces
       .toUpperCase();
 
+    // Prefer the clean filename (exact code match) over dated variants
+    if (!codeToFile.has(code) || file === `${code}.pdf`) {
+      codeToFile.set(code, file);
+    }
+  }
+
+  let total = 0;
+  const results: { file: string; code: string; chunks: number; error?: string }[] = [];
+
+  for (const [code, file] of codeToFile) {
     try {
       const buffer = fs.readFileSync(path.join(GUIDES_DIR, file));
 
@@ -69,6 +92,7 @@ export async function POST() {
     success: true,
     chunksIngested: total,
     filesProcessed: files.length,
+    guidesIngested: codeToFile.size,
     results,
   });
 }

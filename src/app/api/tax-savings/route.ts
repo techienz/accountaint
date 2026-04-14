@@ -19,8 +19,16 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const taxYear = url.searchParams.get("tax_year") || String(getNzTaxYear(new Date()));
 
-  const result = await calculateTaxSavings(business.id, taxYear);
-  return NextResponse.json(result);
+  try {
+    const result = await calculateTaxSavings(business.id, taxYear);
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error("[tax-savings] Error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to calculate tax savings" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {

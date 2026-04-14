@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import {
   createIncome,
   updateIncome,
+  deleteIncome,
   getIncomeByContractId,
 } from "@/lib/budget";
 
@@ -72,6 +73,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "No linked income found" }, { status: 404 });
   }
 
-  updateIncome(existing.id, userId, { work_contract_id: null });
+  deleteIncome(existing.id, userId);
   return NextResponse.json({ success: true });
 }

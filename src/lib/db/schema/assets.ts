@@ -23,6 +23,8 @@ export const assets = sqliteTable("assets", {
   disposal_date: text("disposal_date"), // YYYY-MM-DD
   disposal_price: real("disposal_price"),
   notes: text("notes"),
+  receipt_path: text("receipt_path"),
+  receipt_mime: text("receipt_mime"),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

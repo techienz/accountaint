@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ type FormData = {
   nzbn: string;
   company_number: string;
   registered_office: string;
+  incorporation_date: string;
   ird_number: string;
   balance_date: string;
   gst_registered: boolean;
@@ -39,7 +40,7 @@ const STEP_TITLES = [
   "GST registration",
   "Provisional tax",
   "Employees",
-  "Connect Xero",
+  "Optional: Connect Integrations",
   "Summary",
 ];
 
@@ -60,6 +61,7 @@ export function OnboardingWizard() {
     nzbn: "",
     company_number: "",
     registered_office: "",
+    incorporation_date: "",
     ird_number: "",
     balance_date: "03-31",
     gst_registered: false,
@@ -69,6 +71,38 @@ export function OnboardingWizard() {
     has_employees: false,
     paye_frequency: "monthly",
   });
+
+  // Company search state
+  const [companySearch, setCompanySearch] = useState("");
+  const [searchResults, setSearchResults] = useState<Array<{ nzbn: string; name: string; status: string; companyNumber: string | null }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [nzbnConfigured, setNzbnConfigured] = useState(false);
+  const [importShareholders, setImportShareholders] = useState<Array<{ name: string; shares: number; shareClass: string; selected: boolean }>>([]);
+
+  useEffect(() => {
+    fetch("/api/nzbn/search?q=test").then((r) => {
+      setNzbnConfigured(r.status !== 503);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!nzbnConfigured || companySearch.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/nzbn/search?q=${encodeURIComponent(companySearch)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data.results || []);
+        }
+      } catch { /* ignore */ }
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [companySearch, nzbnConfigured]);
 
   function update(fields: Partial<FormData>) {
     setForm((prev) => ({ ...prev, ...fields }));
@@ -111,6 +145,7 @@ export function OnboardingWizard() {
       nzbn: form.entity_type === "company" ? form.nzbn || undefined : undefined,
       company_number: form.entity_type === "company" ? form.company_number || undefined : undefined,
       registered_office: form.entity_type === "company" ? form.registered_office || undefined : undefined,
+      incorporation_date: form.entity_type === "company" ? form.incorporation_date || undefined : undefined,
     };
 
     const res = await fetch("/api/businesses", {
@@ -128,6 +163,23 @@ export function OnboardingWizard() {
     }
 
     setBusinessId(data.business.id);
+
+    // Import selected shareholders from Companies Register
+    const selectedShareholders = importShareholders.filter((s) => s.selected);
+    for (const sh of selectedShareholders) {
+      try {
+        await fetch("/api/shareholders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: sh.name,
+            ownership_percentage: 0,
+            is_director: false,
+          }),
+        });
+      } catch { /* ignore */ }
+    }
+
     return data.business.id;
   }
 
@@ -223,46 +275,99 @@ export function OnboardingWizard() {
         {step === 2 && form.entity_type === "company" && (
           <div className="space-y-4">
             <div className="rounded-lg bg-muted/50 border p-3 text-sm text-muted-foreground">
-              These details help us identify your company. You can find your NZBN and company number
-              on the <span className="font-medium">Companies Office website</span> (companies.govt.nz).
-              All fields are optional — you can add them later.
+              {nzbnConfigured
+                ? "Search the Companies Register to auto-fill your details, or enter them manually."
+                : <>Enter your company details below. Tip: Add an NZBN API key in Settings to auto-fill from the Companies Register. <a href="https://portal.api.business.govt.nz/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Get a free API key</a></>}
             </div>
+
+            {nzbnConfigured && (
+              <div className="space-y-2">
+                <Label>Search Companies Register</Label>
+                <Input
+                  placeholder="Type company name..."
+                  value={companySearch}
+                  onChange={(e) => setCompanySearch(e.target.value)}
+                />
+                {searching && <p className="text-xs text-muted-foreground">Searching...</p>}
+                {searchResults.length > 0 && (
+                  <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+                    {searchResults.map((r) => (
+                      <button
+                        key={r.nzbn}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50"
+                        onClick={async () => {
+                          const res = await fetch(`/api/nzbn/company/${r.nzbn}`);
+                          if (res.ok) {
+                            const company = await res.json();
+                            update({
+                              name: company.name,
+                              nzbn: company.nzbn,
+                              company_number: company.companyNumber || "",
+                              registered_office: company.registeredAddress || "",
+                              incorporation_date: company.incorporationDate || "",
+                            });
+                            setSearchResults([]);
+                            setCompanySearch("");
+                            if (company.shareholders?.length > 0) {
+                              setImportShareholders(
+                                company.shareholders.map((s: { name: string; shares: number; shareClass: string }) => ({
+                                  ...s,
+                                  selected: true,
+                                }))
+                              );
+                            }
+                          }
+                        }}
+                      >
+                        <p className="font-medium">{r.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {r.companyNumber ? `#${r.companyNumber}` : r.nzbn} · {r.status}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="nzbn">NZBN</Label>
-              <Input
-                id="nzbn"
-                value={form.nzbn}
-                onChange={(e) => update({ nzbn: e.target.value })}
-                placeholder="e.g. 9429000000000"
-              />
-              <p className="text-xs text-muted-foreground">
-                Your 13-digit New Zealand Business Number. Find it at nzbn.govt.nz
-              </p>
+              <Input id="nzbn" value={form.nzbn} onChange={(e) => update({ nzbn: e.target.value })} placeholder="e.g. 9429000000000" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="company_number">Company number</Label>
-              <Input
-                id="company_number"
-                value={form.company_number}
-                onChange={(e) => update({ company_number: e.target.value })}
-                placeholder="e.g. 1234567"
-              />
-              <p className="text-xs text-muted-foreground">
-                Your Companies Office registration number
-              </p>
+              <Input id="company_number" value={form.company_number} onChange={(e) => update({ company_number: e.target.value })} placeholder="e.g. 1234567" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="registered_office">Registered office</Label>
-              <Input
-                id="registered_office"
-                value={form.registered_office}
-                onChange={(e) => update({ registered_office: e.target.value })}
-                placeholder="e.g. 123 Queen St, Auckland"
-              />
-              <p className="text-xs text-muted-foreground">
-                The official address on your company registration
-              </p>
+              <Input id="registered_office" value={form.registered_office} onChange={(e) => update({ registered_office: e.target.value })} placeholder="e.g. 123 Queen St, Auckland" />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="incorporation_date">Incorporation date</Label>
+              <Input id="incorporation_date" type="date" value={form.incorporation_date} onChange={(e) => update({ incorporation_date: e.target.value })} />
+            </div>
+
+            {importShareholders.length > 0 && (
+              <div className="space-y-2 border-t pt-4">
+                <Label>Shareholders from Companies Register</Label>
+                <p className="text-xs text-muted-foreground">Select which shareholders to import.</p>
+                {importShareholders.map((sh, i) => (
+                  <label key={i} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={sh.selected}
+                      onChange={(e) => {
+                        setImportShareholders((prev) =>
+                          prev.map((s, j) => j === i ? { ...s, selected: e.target.checked } : s)
+                        );
+                      }}
+                    />
+                    {sh.name} — {sh.shares} {sh.shareClass} shares
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -468,20 +573,22 @@ export function OnboardingWizard() {
           </div>
         )}
 
-        {/* Step 8: Connect Xero */}
+        {/* Step 8: Connect Integrations (optional) */}
         {step === 8 && (
           <div className="space-y-4">
-            <div className="rounded-lg bg-muted/50 border p-3 text-sm text-muted-foreground">
-              Connecting Xero lets Accountaint automatically pull in your invoices, bank transactions, profit & loss, and balance sheet data.
-              This is how we generate reports, track deadlines, and give you AI-powered insights about your business.
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-300">
+              These integrations are completely optional — you can always connect them later in <strong>Settings</strong>. Accountaint works fully as a standalone accounting system without them.
             </div>
-            <p className="text-sm">
-              You&apos;ll be redirected to Xero to authorise access. We only request <strong>read-only</strong> access — Accountaint never modifies your Xero data.
-            </p>
-            <div className="flex gap-3">
-              <Button onClick={handleConnectXero} disabled={loading || !form.name}>
-                {loading ? "Saving..." : "Connect Xero"}
-              </Button>
+            <div className="space-y-3">
+              <div className="rounded-lg bg-muted/50 border p-3 text-sm">
+                <p className="font-medium mb-1">Connect Xero</p>
+                <p className="text-muted-foreground text-xs mb-3">Pull in your existing data from Xero for cross-checking and reporting. Read-only access — Accountaint never modifies your Xero data.</p>
+                <Button onClick={handleConnectXero} disabled={loading || !form.name} size="sm">
+                  {loading ? "Saving..." : "Connect Xero"}
+                </Button>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
               <Button
                 variant="outline"
                 onClick={async () => {
@@ -496,9 +603,6 @@ export function OnboardingWizard() {
             {!form.name && (
               <p className="text-xs text-amber-600">Please go back and enter a business name first.</p>
             )}
-            <p className="text-xs text-muted-foreground">
-              You can always connect Xero later from Settings &gt; Xero.
-            </p>
           </div>
         )}
 

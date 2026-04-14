@@ -15,11 +15,18 @@ export type DeadlineInput = {
   has_employees: boolean;
   paye_frequency?: PayeFrequency;
   provisional_tax_method?: ProvisionalTaxMethod;
+  incorporation_date?: string; // YYYY-MM-DD
+  fbt_registered?: boolean;
+  pays_contractors?: boolean;
   dateRange: { from: Date; to: Date };
 };
 
+export type DeadlineType =
+  | "gst" | "provisional_tax" | "income_tax" | "paye"
+  | "annual_return" | "acc_levy" | "fbt" | "schedular_payment";
+
 export type Deadline = {
-  type: "gst" | "provisional_tax" | "income_tax" | "paye";
+  type: DeadlineType;
   description: string;
   dueDate: string; // YYYY-MM-DD
   taxYear: number;
@@ -107,6 +114,22 @@ export function calculateDeadlines(config: DeadlineInput): Deadline[] {
   // PAYE deadlines
   if (config.has_employees && config.paye_frequency) {
     deadlines.push(...calculatePayeDeadlines(config, from, to));
+  }
+
+  // Annual return (companies only)
+  deadlines.push(...calculateAnnualReturnDeadlines(config, from, to));
+
+  // ACC levy (all businesses)
+  deadlines.push(...calculateAccLevyDeadlines(from, to));
+
+  // FBT deadlines
+  if (config.fbt_registered) {
+    deadlines.push(...calculateFbtDeadlines(from, to));
+  }
+
+  // Schedular payment deadlines
+  if (config.pays_contractors) {
+    deadlines.push(...calculateSchedularPaymentDeadlines(config, from, to));
   }
 
   deadlines.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -330,6 +353,145 @@ function calculatePayeDeadlines(
           deadlines.push({
             type: "paye",
             description: `PAYE (16th-end ${MONTH_NAMES[month - 1]} ${year})`,
+            dueDate: formatDate(due5th),
+            taxYear: getNzTaxYear(due5th),
+          });
+        }
+      }
+    }
+  }
+
+  return deadlines;
+}
+
+function calculateAnnualReturnDeadlines(
+  config: DeadlineInput,
+  from: Date,
+  to: Date
+): Deadline[] {
+  if (config.entity_type !== "company" || !config.incorporation_date) return [];
+
+  const deadlines: Deadline[] = [];
+  const incMonth = parseInt(config.incorporation_date.slice(5, 7), 10);
+
+  const startYear = from.getFullYear();
+  const endYear = to.getFullYear();
+
+  for (let year = startYear; year <= endYear; year++) {
+    const lastDay = new Date(year, incMonth, 0).getDate();
+    const dueDate = new Date(year, incMonth - 1, lastDay);
+
+    if (isInRange(dueDate, from, to)) {
+      deadlines.push({
+        type: "annual_return",
+        description: `Companies Office annual return`,
+        dueDate: formatDate(dueDate),
+        taxYear: getNzTaxYear(dueDate),
+      });
+    }
+  }
+
+  return deadlines;
+}
+
+function calculateAccLevyDeadlines(
+  from: Date,
+  to: Date
+): Deadline[] {
+  const deadlines: Deadline[] = [];
+  const startYear = from.getFullYear();
+  const endYear = to.getFullYear();
+
+  for (let year = startYear; year <= endYear; year++) {
+    const dueDate = new Date(year, 8, 30); // September 30
+    if (isInRange(dueDate, from, to)) {
+      deadlines.push({
+        type: "acc_levy",
+        description: `ACC levy payment due`,
+        dueDate: formatDate(dueDate),
+        taxYear: getNzTaxYear(dueDate),
+      });
+    }
+  }
+
+  return deadlines;
+}
+
+function calculateFbtDeadlines(
+  from: Date,
+  to: Date
+): Deadline[] {
+  const deadlines: Deadline[] = [];
+  const startYear = from.getFullYear();
+  const endYear = to.getFullYear();
+
+  for (let year = startYear; year <= endYear; year++) {
+    const quarters = [
+      { date: makeWorkingDate(year, 7, 20), desc: `FBT return Q1 (Apr\u2013Jun ${year})` },
+      { date: makeWorkingDate(year, 10, 20), desc: `FBT return Q2 (Jul\u2013Sep ${year})` },
+      { date: makeWorkingDate(year + 1, 1, 20), desc: `FBT return Q3 (Oct\u2013Dec ${year})` },
+      { date: makeWorkingDate(year, 5, 31), desc: `FBT return Q4 (Jan\u2013Mar ${year})` },
+    ];
+
+    for (const q of quarters) {
+      if (isInRange(q.date, from, to)) {
+        deadlines.push({
+          type: "fbt",
+          description: q.desc,
+          dueDate: formatDate(q.date),
+          taxYear: getNzTaxYear(q.date),
+        });
+      }
+    }
+  }
+
+  return deadlines;
+}
+
+function calculateSchedularPaymentDeadlines(
+  config: DeadlineInput,
+  from: Date,
+  to: Date
+): Deadline[] {
+  const frequency = config.paye_frequency || "monthly";
+  const deadlines: Deadline[] = [];
+
+  const startYear = from.getFullYear();
+  const endYear = to.getFullYear();
+
+  for (let year = startYear; year <= endYear + 1; year++) {
+    for (let month = 1; month <= 12; month++) {
+      if (frequency === "monthly") {
+        let dueMonth = month + 1;
+        let dueYear = year;
+        if (dueMonth > 12) { dueMonth = 1; dueYear = year + 1; }
+        const dueDate = makeWorkingDate(dueYear, dueMonth, 20);
+        if (isInRange(dueDate, from, to)) {
+          deadlines.push({
+            type: "schedular_payment",
+            description: `Schedular payment withholding (${MONTH_NAMES[month - 1]} ${year})`,
+            dueDate: formatDate(dueDate),
+            taxYear: getNzTaxYear(dueDate),
+          });
+        }
+      } else {
+        const due20th = makeWorkingDate(year, month, 20);
+        if (isInRange(due20th, from, to)) {
+          deadlines.push({
+            type: "schedular_payment",
+            description: `Schedular payment withholding (1\u201315 ${MONTH_NAMES[month - 1]})`,
+            dueDate: formatDate(due20th),
+            taxYear: getNzTaxYear(due20th),
+          });
+        }
+        let nextMonth = month + 1;
+        let nextYear = year;
+        if (nextMonth > 12) { nextMonth = 1; nextYear = year + 1; }
+        const due5th = makeWorkingDate(nextYear, nextMonth, 5);
+        if (isInRange(due5th, from, to)) {
+          deadlines.push({
+            type: "schedular_payment",
+            description: `Schedular payment withholding (16\u2013${new Date(year, month, 0).getDate()} ${MONTH_NAMES[month - 1]})`,
             dueDate: formatDate(due5th),
             taxYear: getNzTaxYear(due5th),
           });

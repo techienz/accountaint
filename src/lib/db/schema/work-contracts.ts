@@ -28,6 +28,8 @@ export const workContracts = sqliteTable("work_contracts", {
     .notNull()
     .default("active"),
   expiry_notified_at: integer("expiry_notified_at", { mode: "timestamp" }),
+  project_name: text("project_name"),
+  project_code: text("project_code"),
   notes: text("notes"),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()

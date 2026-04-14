@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { ReceiptUpload } from "@/components/expenses/receipt-upload";
 
 // Inline the categories and rates for client-side use
 const CATEGORIES = [
@@ -76,21 +76,30 @@ const RATES: Record<string, { assetType: string; dvRate: number; slRate: number 
 };
 
 type Props = {
-  onSubmit: (data: Record<string, unknown>) => void;
+  onSubmit: (data: Record<string, unknown>, receiptFile?: File) => void;
+  initialData?: {
+    name?: string;
+    category?: string;
+    purchase_date?: string;
+    cost?: string;
+    notes?: string;
+  };
 };
 
-export function AssetForm({ onSubmit }: Props) {
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
+export function AssetForm({ onSubmit, initialData }: Props) {
+  const [name, setName] = useState(initialData?.name || "");
+  const [category, setCategory] = useState(initialData?.category || "");
   const [assetType, setAssetType] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(
-    new Date().toISOString().split("T")[0]
+    initialData?.purchase_date || new Date().toISOString().split("T")[0]
   );
-  const [cost, setCost] = useState("");
+  const [cost, setCost] = useState(initialData?.cost || "");
   const [method, setMethod] = useState<"DV" | "SL">("DV");
   const [rate, setRate] = useState("");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialData?.notes || "");
   const [saving, setSaving] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
   const assetTypes = category ? RATES[category] || [] : [];
 
@@ -107,6 +116,13 @@ export function AssetForm({ onSubmit }: Props) {
 
   const isLowValue = Number(cost) > 0 && Number(cost) < 1000;
 
+  function handleReceiptSelect(file: File) {
+    setReceiptFile(file);
+    if (file.type.startsWith("image/")) {
+      setReceiptPreview(URL.createObjectURL(file));
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -118,7 +134,7 @@ export function AssetForm({ onSubmit }: Props) {
       depreciation_method: method,
       depreciation_rate: Number(rate),
       notes: notes || null,
-    });
+    }, receiptFile ?? undefined);
     setSaving(false);
   }
 
@@ -192,6 +208,11 @@ export function AssetForm({ onSubmit }: Props) {
           <div>
             <Label>Notes</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Receipt / Proof of Purchase (optional)</Label>
+            <ReceiptUpload onFileSelect={handleReceiptSelect} preview={receiptPreview} />
           </div>
 
           <Button type="submit" disabled={saving}>

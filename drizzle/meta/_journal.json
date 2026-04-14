@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1773791985191,
+      "tag": "0000_strong_deadpool",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1773794833570,
+      "tag": "0001_confused_next_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1773797386595,
+      "tag": "0002_wide_mephistopheles",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Scale } from "lucide-react";
 import type { RulesFreshness } from "@/lib/tax/rules";
@@ -8,6 +9,7 @@ type TaxRulesStatusProps = {
   lastVerified: string | null;
   freshness: RulesFreshness;
   daysSinceVerified: number | null;
+  pendingUpdates?: number;
 };
 
 const freshnessConfig: Record<
@@ -37,6 +39,7 @@ export function TaxRulesStatus({
   lastVerified,
   freshness,
   daysSinceVerified,
+  pendingUpdates = 0,
 }: TaxRulesStatusProps) {
   const config = freshnessConfig[freshness];
 
@@ -71,6 +74,15 @@ export function TaxRulesStatus({
               </span>
             )}
           </div>
+
+          {pendingUpdates > 0 && (
+            <Link
+              href="/settings/regulatory-updates"
+              className="text-xs text-amber-600 hover:underline"
+            >
+              {pendingUpdates} update{pendingUpdates > 1 ? "s" : ""} available &rarr;
+            </Link>
+          )}
         </div>
       </CardContent>
     </Card>

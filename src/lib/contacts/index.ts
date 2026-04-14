@@ -11,6 +11,7 @@ type ContactInput = {
   phone?: string | null;
   address?: string | null;
   tax_number?: string | null;
+  cc_emails?: string | null;
   type?: ContactType;
   default_due_days?: number;
   notes?: string | null;
@@ -28,6 +29,7 @@ function decryptContact(row: typeof schema.contacts.$inferSelect) {
     phone: row.phone ? decrypt(row.phone) : null,
     address: row.address ? decrypt(row.address) : null,
     tax_number: row.tax_number ? decrypt(row.tax_number) : null,
+    cc_emails: row.cc_emails ? decrypt(row.cc_emails) : null,
   };
 }
 
@@ -80,6 +82,7 @@ export function createContact(businessId: string, data: ContactInput) {
       tax_number: data.tax_number ? encrypt(data.tax_number) : null,
       type: data.type ?? "customer",
       default_due_days: data.default_due_days ?? 20,
+      cc_emails: data.cc_emails ? encrypt(data.cc_emails) : null,
       notes: data.notes ?? null,
     })
     .run();
@@ -112,6 +115,7 @@ export function updateContact(
   if (data.phone !== undefined) updates.phone = data.phone ? encrypt(data.phone) : null;
   if (data.address !== undefined) updates.address = data.address ? encrypt(data.address) : null;
   if (data.tax_number !== undefined) updates.tax_number = data.tax_number ? encrypt(data.tax_number) : null;
+  if (data.cc_emails !== undefined) updates.cc_emails = data.cc_emails ? encrypt(data.cc_emails) : null;
   if (data.type !== undefined) updates.type = data.type;
   if (data.default_due_days !== undefined) updates.default_due_days = data.default_due_days;
   if (data.notes !== undefined) updates.notes = data.notes;
