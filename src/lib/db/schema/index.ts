@@ -63,3 +63,4 @@ export { payRuns, payRunLines } from "./payroll";
 export { regulatoryCheckRuns, regulatoryChecks } from "./regulatory";
 export { taxOptimisationResults } from "./tax-optimisation";
 export { integrationConfig } from "./integration-config";
+export { dividendDeclarations } from "./dividends";

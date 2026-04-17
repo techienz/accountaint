@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,12 +15,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
+import { EmployeeForm } from "@/components/employees/employee-form";
 
 type Employee = {
   id: string;
   name: string;
+  email: string | null;
+  phone: string | null;
+  job_title: string | null;
+  department: string | null;
+  ird_number: string | null;
+  date_of_birth: string | null;
+  address: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
   start_date: string;
+  end_date: string | null;
   employment_type: string;
   pay_type: string;
   pay_rate: number;
@@ -64,8 +75,10 @@ const fmt = (n: number) =>
 
 export default function EmployeeDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([]);
+  const [editing, setEditing] = useState(false);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [leaveType, setLeaveType] = useState("annual");
   const [leaveStart, setLeaveStart] = useState("");
@@ -73,6 +86,7 @@ export default function EmployeeDetailPage() {
   const [leaveDays, setLeaveDays] = useState("");
   const [leaveNotes, setLeaveNotes] = useState("");
   const [savingLeave, setSavingLeave] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   const loadData = useCallback(async () => {
     const [empRes, leaveRes] = await Promise.all([
@@ -86,6 +100,32 @@ export default function EmployeeDetailPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  async function handleUpdate(data: Record<string, unknown>) {
+    const res = await fetch(`/api/employees/${params.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      setEditing(false);
+      loadData();
+    }
+  }
+
+  async function handleToggleActive() {
+    if (!employee) return;
+    const action = employee.is_active ? "deactivate" : "reactivate";
+    if (!confirm(`Are you sure you want to ${action} ${employee.name}?`)) return;
+    setToggling(true);
+    await fetch(`/api/employees/${params.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !employee.is_active }),
+    });
+    setToggling(false);
+    loadData();
+  }
 
   async function handleRecordLeave(e: React.FormEvent) {
     e.preventDefault();
@@ -130,192 +170,278 @@ export default function EmployeeDetailPage() {
         <ArrowLeft className="h-3.5 w-3.5" /> Back to employees
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold">{employee.name}</h1>
-        <p className="text-muted-foreground">
-          {employmentLabels[employee.employment_type] ?? employee.employment_type}
-          {" \u00b7 Started "}
-          {employee.start_date}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">{employee.name}</h1>
+            {!employee.is_active && (
+              <Badge variant="secondary">Inactive</Badge>
+            )}
+          </div>
+          <p className="text-muted-foreground">
+            {employee.job_title && `${employee.job_title} \u00b7 `}
+            {employmentLabels[employee.employment_type] ?? employee.employment_type}
+            {" \u00b7 Started "}
+            {employee.start_date}
+            {employee.tax_code && ` \u00b7 Tax code ${employee.tax_code}`}
+            {employee.has_student_loan && " \u00b7 Student loan"}
+          </p>
+          {(employee.email || employee.phone) && (
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {employee.email}
+              {employee.email && employee.phone && " \u00b7 "}
+              {employee.phone}
+            </p>
+          )}
+          {(employee.ird_number || employee.department) && (
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {employee.ird_number && `IRD ${employee.ird_number}`}
+              {employee.ird_number && employee.department && " \u00b7 "}
+              {employee.department}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEditing(!editing)}
+          >
+            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+            {editing ? "Cancel" : "Edit"}
+          </Button>
+          <Button
+            variant={employee.is_active ? "outline" : "default"}
+            size="sm"
+            onClick={handleToggleActive}
+            disabled={toggling}
+          >
+            {toggling
+              ? "Saving..."
+              : employee.is_active
+                ? "Deactivate"
+                : "Reactivate"}
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Pay</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">
-              {fmt(employee.pay_rate)}
-            </span>
-            <span className="text-sm text-muted-foreground">
-              {employee.pay_type === "salary" ? "/yr" : "/hr"}
-            </span>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Annual Leave</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">
-              {employee.leave_annual_balance.toFixed(1)}
-            </span>
-            <span className="text-sm text-muted-foreground"> days</span>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Sick Leave</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">
-              {employee.leave_sick_balance.toFixed(1)}
-            </span>
-            <span className="text-sm text-muted-foreground"> days</span>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">KiwiSaver</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {employee.kiwisaver_enrolled ? (
-              <>
+      {editing ? (
+        <EmployeeForm onSubmit={handleUpdate} initialData={employee} />
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Pay</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <span className="text-2xl font-bold">
-                  {(employee.kiwisaver_employee_rate * 100).toFixed(1)}%
+                  {fmt(employee.pay_rate)}
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  {" "}
-                  + {(employee.kiwisaver_employer_rate * 100).toFixed(1)}%
-                  employer
+                  {employee.pay_type === "salary" ? "/yr" : "/hr"}
                 </span>
-              </>
-            ) : (
-              <span className="text-muted-foreground">Not enrolled</span>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {employee.hours_per_week}hrs/week
+                </p>
+              </CardContent>
+            </Card>
 
-      <div>
-        <Button
-          variant={showLeaveForm ? "outline" : "default"}
-          onClick={() => setShowLeaveForm(!showLeaveForm)}
-        >
-          {showLeaveForm ? "Cancel" : "Record Leave"}
-        </Button>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Annual Leave
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <span className="text-2xl font-bold">
+                  {employee.leave_annual_balance.toFixed(1)}
+                </span>
+                <span className="text-sm text-muted-foreground"> days</span>
+              </CardContent>
+            </Card>
 
-        {showLeaveForm && (
-          <Card className="mt-4">
-            <CardContent className="pt-6">
-              <form onSubmit={handleRecordLeave} className="space-y-4">
-                <div>
-                  <Label>Leave Type</Label>
-                  <Select
-                    value={leaveType}
-                    onValueChange={(v) => v && setLeaveType(v)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue labels={leaveTypeLabels} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="annual">Annual</SelectItem>
-                      <SelectItem value="sick">Sick</SelectItem>
-                      <SelectItem value="bereavement">Bereavement</SelectItem>
-                      <SelectItem value="public_holiday">
-                        Public Holiday
-                      </SelectItem>
-                      <SelectItem value="unpaid">Unpaid</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="leave_start">Start Date</Label>
-                    <Input
-                      id="leave_start"
-                      type="date"
-                      value={leaveStart}
-                      onChange={(e) => setLeaveStart(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="leave_end">End Date</Label>
-                    <Input
-                      id="leave_end"
-                      type="date"
-                      value={leaveEnd}
-                      onChange={(e) => setLeaveEnd(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="leave_days">Days</Label>
-                  <Input
-                    id="leave_days"
-                    type="number"
-                    min="0.5"
-                    step="0.5"
-                    value={leaveDays}
-                    onChange={(e) => setLeaveDays(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="leave_notes">Notes</Label>
-                  <Input
-                    id="leave_notes"
-                    value={leaveNotes}
-                    onChange={(e) => setLeaveNotes(e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-                <Button type="submit" disabled={savingLeave}>
-                  {savingLeave ? "Saving..." : "Save"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Sick Leave
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <span className="text-2xl font-bold">
+                  {employee.leave_sick_balance.toFixed(1)}
+                </span>
+                <span className="text-sm text-muted-foreground"> days</span>
+              </CardContent>
+            </Card>
 
-      {sortedLeave.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Leave History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {sortedLeave.map((record) => (
-                <div
-                  key={record.id}
-                  className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">
-                        {leaveTypeLabels[record.type] ?? record.type}
-                      </Badge>
-                      <span className="text-sm font-medium">
-                        {record.days} day{record.days !== 1 ? "s" : ""}
-                      </span>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">KiwiSaver</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {employee.kiwisaver_enrolled ? (
+                  <>
+                    <span className="text-2xl font-bold">
+                      {(employee.kiwisaver_employee_rate * 100).toFixed(1)}%
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {" "}
+                      + {(employee.kiwisaver_employer_rate * 100).toFixed(1)}%
+                      employer
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">Not enrolled</span>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {(employee.date_of_birth || employee.address || employee.emergency_contact_name) && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Personal Details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
+                  {employee.date_of_birth && (
+                    <div><span className="text-muted-foreground">Date of birth:</span> {employee.date_of_birth}</div>
+                  )}
+                  {employee.address && (
+                    <div><span className="text-muted-foreground">Address:</span> {employee.address}</div>
+                  )}
+                  {employee.emergency_contact_name && (
+                    <div>
+                      <span className="text-muted-foreground">Emergency contact:</span>{" "}
+                      {employee.emergency_contact_name}
+                      {employee.emergency_contact_phone && ` \u2014 ${employee.emergency_contact_phone}`}
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {record.start_date} to {record.end_date}
-                      {record.notes && ` \u2014 ${record.notes}`}
-                    </p>
-                  </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          )}
+
+          <div>
+            <Button
+              variant={showLeaveForm ? "outline" : "default"}
+              onClick={() => setShowLeaveForm(!showLeaveForm)}
+            >
+              {showLeaveForm ? "Cancel" : "Record Leave"}
+            </Button>
+
+            {showLeaveForm && (
+              <Card className="mt-4">
+                <CardContent className="pt-6">
+                  <form onSubmit={handleRecordLeave} className="space-y-4">
+                    <div>
+                      <Label>Leave Type</Label>
+                      <Select
+                        value={leaveType}
+                        onValueChange={(v) => v && setLeaveType(v)}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue labels={leaveTypeLabels} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="annual">Annual</SelectItem>
+                          <SelectItem value="sick">Sick</SelectItem>
+                          <SelectItem value="bereavement">
+                            Bereavement
+                          </SelectItem>
+                          <SelectItem value="public_holiday">
+                            Public Holiday
+                          </SelectItem>
+                          <SelectItem value="unpaid">Unpaid</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <Label htmlFor="leave_start">Start Date</Label>
+                        <Input
+                          id="leave_start"
+                          type="date"
+                          value={leaveStart}
+                          onChange={(e) => setLeaveStart(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="leave_end">End Date</Label>
+                        <Input
+                          id="leave_end"
+                          type="date"
+                          value={leaveEnd}
+                          onChange={(e) => setLeaveEnd(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="leave_days">Days</Label>
+                      <Input
+                        id="leave_days"
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        value={leaveDays}
+                        onChange={(e) => setLeaveDays(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="leave_notes">Notes</Label>
+                      <Input
+                        id="leave_notes"
+                        value={leaveNotes}
+                        onChange={(e) => setLeaveNotes(e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <Button type="submit" disabled={savingLeave}>
+                      {savingLeave ? "Saving..." : "Save"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {sortedLeave.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Leave History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {sortedLeave.map((record) => (
+                    <div
+                      key={record.id}
+                      className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">
+                            {leaveTypeLabels[record.type] ?? record.type}
+                          </Badge>
+                          <span className="text-sm font-medium">
+                            {record.days} day{record.days !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {record.start_date} to {record.end_date}
+                          {record.notes && ` \u2014 ${record.notes}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
     </div>
   );

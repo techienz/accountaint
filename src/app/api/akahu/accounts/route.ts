@@ -31,6 +31,7 @@ export async function GET() {
     linked_budget_account_id: a.linked_budget_account_id,
     linked_business_id: a.linked_business_id,
     linked_ledger_account_id: a.linked_ledger_account_id,
+    is_tax_savings: a.is_tax_savings,
   }));
 
   return NextResponse.json({ accounts: decrypted });
@@ -47,15 +48,44 @@ export async function PUT(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { accountId, linkType, linkId } = body as {
+  const { accountId, linkType, linkId, is_tax_savings } = body as {
     accountId: string;
-    linkType: "personal" | "business" | "none";
+    linkType?: "personal" | "business" | "none";
     linkId?: string;
+    is_tax_savings?: boolean;
   };
 
-  if (!accountId || !linkType) {
+  if (!accountId) {
     return NextResponse.json(
-      { error: "accountId and linkType are required" },
+      { error: "accountId is required" },
+      { status: 400 }
+    );
+  }
+
+  // Handle is_tax_savings toggle
+  if (is_tax_savings !== undefined) {
+    const db = getDb();
+    const acct = db.select().from(schema.akahuAccounts).where(eq(schema.akahuAccounts.id, accountId)).get();
+    if (!acct || acct.user_id !== session.user.id) {
+      return NextResponse.json({ error: "Account not found" }, { status: 404 });
+    }
+    // Clear any existing tax savings flag for this business first
+    if (is_tax_savings && acct.linked_business_id) {
+      db.update(schema.akahuAccounts)
+        .set({ is_tax_savings: false })
+        .where(eq(schema.akahuAccounts.linked_business_id, acct.linked_business_id))
+        .run();
+    }
+    db.update(schema.akahuAccounts)
+      .set({ is_tax_savings })
+      .where(eq(schema.akahuAccounts.id, accountId))
+      .run();
+    return NextResponse.json({ success: true });
+  }
+
+  if (!linkType) {
+    return NextResponse.json(
+      { error: "linkType is required" },
       { status: 400 }
     );
   }

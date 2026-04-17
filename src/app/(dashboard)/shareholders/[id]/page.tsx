@@ -4,9 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { TransactionForm } from "@/components/shareholders/transaction-form";
+import { DeclareDividendDialog } from "@/components/shareholders/declare-dividend-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -16,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, ArrowLeft } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Pencil } from "lucide-react";
 
 type Transaction = {
   id: string;
@@ -37,6 +41,9 @@ type BalanceData = {
 type Shareholder = {
   id: string;
   name: string;
+  ird_number: string | null;
+  date_of_birth: string | null;
+  address: string | null;
   ownership_percentage: number;
   is_director: boolean;
 };
@@ -46,7 +53,58 @@ export default function ShareholderDetailPage() {
   const router = useRouter();
   const [shareholder, setShareholder] = useState<Shareholder | null>(null);
   const [balance, setBalance] = useState<BalanceData | null>(null);
+  const [editing, setEditing] = useState(false);
   const taxYear = String(new Date().getFullYear());
+
+  // Edit form state
+  const [editName, setEditName] = useState("");
+  const [editIrd, setEditIrd] = useState("");
+  const [editDob, setEditDob] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editOwnership, setEditOwnership] = useState("");
+  const [editDirector, setEditDirector] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function startEditing() {
+    if (!shareholder) return;
+    setEditName(shareholder.name);
+    setEditIrd(shareholder.ird_number ?? "");
+    setEditDob(shareholder.date_of_birth ?? "");
+    setEditAddress(shareholder.address ?? "");
+    setEditOwnership(String(shareholder.ownership_percentage));
+    setEditDirector(shareholder.is_director);
+    setEditError(null);
+    setEditing(true);
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setEditError(null);
+
+    const res = await fetch(`/api/shareholders/${params.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: editName,
+        ird_number: editIrd || null,
+        date_of_birth: editDob || null,
+        address: editAddress || null,
+        ownership_percentage: Number(editOwnership),
+        is_director: editDirector,
+      }),
+    });
+
+    if (res.ok) {
+      setEditing(false);
+      loadData();
+    } else {
+      const data = await res.json();
+      setEditError(data.error || "Failed to update");
+    }
+    setSaving(false);
+  }
 
   async function handleDelete() {
     if (!confirm("Delete this shareholder and all their transactions? This cannot be undone.")) return;
@@ -91,13 +149,65 @@ export default function ShareholderDetailPage() {
           <h1 className="text-2xl font-bold">{shareholder.name}</h1>
           <p className="text-muted-foreground">
             {shareholder.ownership_percentage}% ownership
-            {shareholder.is_director && " · Director"}
+            {shareholder.is_director && " \u00b7 Director"}
+            {shareholder.ird_number && ` \u00b7 IRD ${shareholder.ird_number}`}
+            {shareholder.date_of_birth && ` \u00b7 DOB ${shareholder.date_of_birth}`}
           </p>
+          {shareholder.address && (
+            <p className="text-sm text-muted-foreground">{shareholder.address}</p>
+          )}
         </div>
-        <Button variant="destructive" onClick={handleDelete}>
-          Delete Shareholder
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={editing ? () => setEditing(false) : startEditing}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+            {editing ? "Cancel" : "Edit"}
+          </Button>
+          <Button variant="destructive" size="sm" onClick={handleDelete}>
+            Delete
+          </Button>
+        </div>
       </div>
+
+      {editing && (
+        <Card>
+          <CardContent className="pt-6">
+            <form onSubmit={handleSave} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="sh-name">Name</Label>
+                  <Input id="sh-name" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+                </div>
+                <div>
+                  <Label htmlFor="sh-ird">IRD Number</Label>
+                  <Input id="sh-ird" value={editIrd} onChange={(e) => setEditIrd(e.target.value)} placeholder="e.g. 12-345-678" />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="sh-dob">Date of Birth</Label>
+                  <Input id="sh-dob" type="date" value={editDob} onChange={(e) => setEditDob(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="sh-ownership">Ownership (%)</Label>
+                  <Input id="sh-ownership" type="number" min="0" max="100" step="0.1" value={editOwnership} onChange={(e) => setEditOwnership(e.target.value)} required />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="sh-address">Residential Address</Label>
+                <Input id="sh-address" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} placeholder="Optional" />
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch id="sh-director" checked={editDirector} onCheckedChange={setEditDirector} />
+                <Label htmlFor="sh-director">Director</Label>
+              </div>
+              {editError && <p className="text-sm text-red-600">{editError}</p>}
+              <Button type="submit" disabled={saving}>
+                {saving ? "Saving..." : "Update Shareholder"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {balance && balance.isOverdrawn && (
         <Alert variant="destructive">
@@ -125,7 +235,7 @@ export default function ShareholderDetailPage() {
                 balance && balance.closingBalance < 0 ? "text-red-600" : ""
               }`}
             >
-              {balance ? fmt(balance.closingBalance) : "—"}
+              {balance ? fmt(balance.closingBalance) : "\u2014"}
             </span>
             {balance && balance.closingBalance < 0 && (
               <Badge variant="destructive" className="ml-2">
@@ -134,6 +244,10 @@ export default function ShareholderDetailPage() {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <DeclareDividendDialog onSuccess={loadData} />
       </div>
 
       <TransactionForm
@@ -167,7 +281,7 @@ export default function ShareholderDetailPage() {
                         {tx.type}
                       </Badge>
                     </TableCell>
-                    <TableCell>{tx.description || "—"}</TableCell>
+                    <TableCell>{tx.description || "\u2014"}</TableCell>
                     <TableCell
                       className={`text-right ${
                         tx.amount > 0 ? "text-red-600" : "text-green-600"

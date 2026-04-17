@@ -6,7 +6,17 @@ import { getTaxYearConfig, getNzTaxYear } from "@/lib/tax/rules";
 
 type EmployeeInput = {
   name: string;
+  email?: string | null;
+  phone?: string | null;
+  job_title?: string | null;
+  department?: string | null;
+  ird_number?: string | null;
+  date_of_birth?: string | null;
+  address?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
   start_date: string;
+  end_date?: string | null;
   employment_type: "full_time" | "part_time" | "casual";
   pay_type: "salary" | "hourly";
   pay_rate: number;
@@ -18,6 +28,19 @@ type EmployeeInput = {
   has_student_loan?: boolean;
 };
 
+const ENCRYPTED_FIELDS = [
+  "email", "phone", "ird_number", "date_of_birth",
+  "address", "emergency_contact_name", "emergency_contact_phone",
+] as const;
+
+function decryptEmployee<T extends { name: string }>(emp: T): T {
+  const result: Record<string, unknown> = { ...emp, name: decrypt(emp.name) };
+  for (const field of ENCRYPTED_FIELDS) {
+    if (result[field]) result[field] = decrypt(result[field] as string);
+  }
+  return result as T;
+}
+
 export function listEmployees(businessId: string) {
   const db = getDb();
   return db
@@ -25,7 +48,7 @@ export function listEmployees(businessId: string) {
     .from(schema.employees)
     .where(eq(schema.employees.business_id, businessId))
     .all()
-    .map((e) => ({ ...e, name: decrypt(e.name) }));
+    .map((e) => decryptEmployee(e));
 }
 
 export function getEmployee(businessId: string, id: string) {
@@ -36,7 +59,7 @@ export function getEmployee(businessId: string, id: string) {
     .where(and(eq(schema.employees.id, id), eq(schema.employees.business_id, businessId)))
     .get();
   if (!emp) return null;
-  return { ...emp, name: decrypt(emp.name) };
+  return decryptEmployee(emp);
 }
 
 export function createEmployee(businessId: string, input: EmployeeInput) {
@@ -47,7 +70,17 @@ export function createEmployee(businessId: string, input: EmployeeInput) {
       id,
       business_id: businessId,
       name: encrypt(input.name),
+      email: input.email ? encrypt(input.email) : null,
+      phone: input.phone ? encrypt(input.phone) : null,
+      job_title: input.job_title ?? null,
+      department: input.department ?? null,
+      ird_number: input.ird_number ? encrypt(input.ird_number) : null,
+      date_of_birth: input.date_of_birth ? encrypt(input.date_of_birth) : null,
+      address: input.address ? encrypt(input.address) : null,
+      emergency_contact_name: input.emergency_contact_name ? encrypt(input.emergency_contact_name) : null,
+      emergency_contact_phone: input.emergency_contact_phone ? encrypt(input.emergency_contact_phone) : null,
       start_date: input.start_date,
+      end_date: input.end_date ?? null,
       employment_type: input.employment_type,
       pay_type: input.pay_type,
       pay_rate: input.pay_rate,
@@ -81,6 +114,16 @@ export function updateEmployee(
   if (updates.kiwisaver_employer_rate !== undefined) set.kiwisaver_employer_rate = updates.kiwisaver_employer_rate;
   if (updates.has_student_loan !== undefined) set.has_student_loan = updates.has_student_loan;
   if (updates.is_active !== undefined) set.is_active = updates.is_active;
+  if (updates.end_date !== undefined) set.end_date = updates.end_date || null;
+  if (updates.job_title !== undefined) set.job_title = updates.job_title || null;
+  if (updates.department !== undefined) set.department = updates.department || null;
+  if (updates.email !== undefined) set.email = updates.email ? encrypt(updates.email) : null;
+  if (updates.phone !== undefined) set.phone = updates.phone ? encrypt(updates.phone) : null;
+  if (updates.ird_number !== undefined) set.ird_number = updates.ird_number ? encrypt(updates.ird_number) : null;
+  if (updates.date_of_birth !== undefined) set.date_of_birth = updates.date_of_birth ? encrypt(updates.date_of_birth) : null;
+  if (updates.address !== undefined) set.address = updates.address ? encrypt(updates.address) : null;
+  if (updates.emergency_contact_name !== undefined) set.emergency_contact_name = updates.emergency_contact_name ? encrypt(updates.emergency_contact_name) : null;
+  if (updates.emergency_contact_phone !== undefined) set.emergency_contact_phone = updates.emergency_contact_phone ? encrypt(updates.emergency_contact_phone) : null;
 
   db.update(schema.employees)
     .set(set)

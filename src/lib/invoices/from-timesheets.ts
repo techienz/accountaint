@@ -9,6 +9,7 @@ type TimesheetInvoiceRequest = {
   entry_ids?: string[];
   gst_rate?: number;
   include_descriptions?: boolean;
+  include_invoiced?: boolean; // re-invoice already-invoiced entries
 };
 
 export async function createInvoiceFromTimesheets(
@@ -16,7 +17,8 @@ export async function createInvoiceFromTimesheets(
   requests: TimesheetInvoiceRequest[]
 ) {
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  const { todayNZ } = await import("@/lib/utils/dates");
+  const today = todayNZ();
 
   const allLineItems: Array<{
     description: string;
@@ -54,35 +56,47 @@ export async function createInvoiceFromTimesheets(
     }
     contactId = contact.id;
 
-    // Fetch approved entries for this contract
-    const conditions = [
+    // Fetch entries for this contract
+    const baseConditions = [
       eq(schema.timesheetEntries.business_id, businessId),
       eq(schema.timesheetEntries.work_contract_id, req.work_contract_id),
-      eq(schema.timesheetEntries.status, "approved"),
     ];
 
-    let entries;
+    // Get approved entries
+    let entries = db
+      .select()
+      .from(schema.timesheetEntries)
+      .where(and(...baseConditions, eq(schema.timesheetEntries.status, "approved")))
+      .all();
+
+    // If include_invoiced, also grab invoiced entries and revert them
+    if (req.include_invoiced && entries.length === 0) {
+      const invoicedEntries = db
+        .select()
+        .from(schema.timesheetEntries)
+        .where(and(...baseConditions, eq(schema.timesheetEntries.status, "invoiced")))
+        .all();
+
+      if (invoicedEntries.length > 0) {
+        // Revert to approved
+        for (const entry of invoicedEntries) {
+          db.update(schema.timesheetEntries)
+            .set({ status: "approved", invoice_id: null })
+            .where(eq(schema.timesheetEntries.id, entry.id))
+            .run();
+        }
+        entries = invoicedEntries;
+      }
+    }
+
+    // Filter by specific IDs if provided
     if (req.entry_ids && req.entry_ids.length > 0) {
-      entries = db
-        .select()
-        .from(schema.timesheetEntries)
-        .where(
-          and(
-            ...conditions,
-            inArray(schema.timesheetEntries.id, req.entry_ids)
-          )
-        )
-        .all();
-    } else {
-      entries = db
-        .select()
-        .from(schema.timesheetEntries)
-        .where(and(...conditions))
-        .all();
+      const idSet = new Set(req.entry_ids);
+      entries = entries.filter((e) => idSet.has(e.id));
     }
 
     if (entries.length === 0) {
-      throw new Error(`No approved timesheet entries for contract: ${clientName}`);
+      throw new Error(`No approved timesheet entries for contract: ${clientName}. If entries are already invoiced, ask to regenerate the invoice.`);
     }
 
     // Calculate total hours
@@ -157,7 +171,7 @@ export async function createInvoiceFromTimesheets(
     contact_id: contactId,
     type: "ACCREC",
     date: today,
-    due_date: dueDate.toISOString().slice(0, 10),
+    due_date: `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, "0")}-${String(dueDate.getDate()).padStart(2, "0")}`,
     gst_inclusive: false,
     payment_instructions: biz?.payment_instructions ?? null,
     line_items: allLineItems,

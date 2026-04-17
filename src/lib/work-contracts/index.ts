@@ -20,6 +20,9 @@ type WorkContractInput = {
   document_id?: string | null;
   project_name?: string | null;
   project_code?: string | null;
+  billing_cycle?: string | null;
+  invoice_due_day?: number | null;
+  invoice_send_day?: number | null;
   notes?: string | null;
 };
 
@@ -143,6 +146,9 @@ export function createWorkContract(businessId: string, data: WorkContractInput) 
       document_id: data.document_id ?? null,
       project_name: data.project_name ?? null,
       project_code: data.project_code ?? null,
+      billing_cycle: (data.billing_cycle as "weekly" | "fortnightly" | "monthly" | "on_completion") ?? null,
+      invoice_due_day: data.invoice_due_day ?? null,
+      invoice_send_day: data.invoice_send_day ?? null,
       status,
       notes: data.notes ?? null,
     })
@@ -184,6 +190,9 @@ export function updateWorkContract(
   if (data.document_id !== undefined) updates.document_id = data.document_id;
   if (data.project_name !== undefined) updates.project_name = data.project_name;
   if (data.project_code !== undefined) updates.project_code = data.project_code;
+  if (data.billing_cycle !== undefined) updates.billing_cycle = data.billing_cycle;
+  if (data.invoice_due_day !== undefined) updates.invoice_due_day = data.invoice_due_day;
+  if (data.invoice_send_day !== undefined) updates.invoice_send_day = data.invoice_send_day;
   if (data.notes !== undefined) updates.notes = data.notes;
 
   if (data.status === "cancelled" || data.status === "completed") {

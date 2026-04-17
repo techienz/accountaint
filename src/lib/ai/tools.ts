@@ -627,17 +627,21 @@ export const chatTools: Tool[] = [
   {
     name: "create_invoice_from_timesheets",
     description:
-      "Create an invoice from approved timesheet entries for a work contract.",
+      "Create an invoice from timesheet entries for a work contract. Use include_invoiced=true when the user wants to regenerate or re-create an invoice for already-invoiced entries.",
     input_schema: {
       type: "object" as const,
       properties: {
         work_contract_id: {
           type: "string",
-          description: "The work contract to invoice approved hours for",
+          description: "The work contract to invoice hours for",
         },
         gst_rate: {
           type: "number",
           description: "GST rate (default 0.15 for 15%)",
+        },
+        include_invoiced: {
+          type: "boolean",
+          description: "Set to true to re-invoice already-invoiced entries (for regenerating invoices). This un-invoices them first.",
         },
       },
       required: ["work_contract_id"],
@@ -789,6 +793,21 @@ export const chatTools: Tool[] = [
     },
   },
   {
+    name: "get_employees",
+    description:
+      "Get all employees with their full details including pay, tax code, KiwiSaver, IRD number, contact details, and leave balances.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        include_inactive: {
+          type: "boolean",
+          description: "Include inactive employees (default false)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: "create_pay_run",
     description: "Create and calculate a pay run for employees. Use when the user asks to run payroll or pay themselves.",
     input_schema: {
@@ -847,6 +866,29 @@ export const chatTools: Tool[] = [
         project_code: { type: "string", description: "Project code" },
       },
       required: ["contract_id"],
+    },
+  },
+  {
+    name: "declare_dividend",
+    description:
+      "Declare a dividend to shareholders, generate a board resolution PDF (NZ Companies Act 1993 s107), record shareholder transactions, and post journal entries. The resolution is stored in the Document Vault. Use get_shareholder_balances first to check current account balances before declaring.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        total_amount: {
+          type: "number",
+          description: "Total gross dividend amount ($)",
+        },
+        date: {
+          type: "string",
+          description: "Dividend date YYYY-MM-DD (defaults to today)",
+        },
+        notes: {
+          type: "string",
+          description: "Optional notes for the board resolution",
+        },
+      },
+      required: ["total_amount"],
     },
   },
 ];
@@ -1158,6 +1200,9 @@ export async function executeTool(
           return sanitiseXeroData(
             {
               name: decrypt(s.name),
+              ird_number: s.ird_number ? decrypt(s.ird_number) : null,
+              date_of_birth: s.date_of_birth ? decrypt(s.date_of_birth) : null,
+              address: s.address ? decrypt(s.address) : null,
               ownership_percentage: s.ownership_percentage,
               is_director: s.is_director,
               closing_balance: balance.closingBalance,
@@ -1625,8 +1670,9 @@ export async function executeTool(
       const contractId = toolInput.work_contract_id as string;
       if (!contractId) return { error: "work_contract_id is required" };
       const gstRate = (toolInput.gst_rate as number) ?? 0.15;
+      const includeInvoiced = (toolInput.include_invoiced as boolean) ?? false;
       const invoice = await createInvoiceFromTimesheets(businessId, [
-        { work_contract_id: contractId, gst_rate: gstRate },
+        { work_contract_id: contractId, gst_rate: gstRate, include_invoiced: includeInvoiced },
       ]);
       if (!invoice) return { error: "Failed to create invoice. Check that there are approved timesheet entries." };
       return sanitiseXeroData(
@@ -1782,6 +1828,43 @@ export async function executeTool(
       }
     }
 
+    case "get_employees": {
+      const { listEmployees } = await import("@/lib/employees");
+      const emps = listEmployees(businessId);
+      const includeInactive = toolInput.include_inactive as boolean;
+      const filtered = includeInactive ? emps : emps.filter((e) => e.is_active);
+      return sanitiseXeroData(
+        filtered.map((e) => ({
+          id: e.id,
+          name: e.name,
+          email: e.email,
+          phone: e.phone,
+          job_title: e.job_title,
+          department: e.department,
+          ird_number: e.ird_number,
+          date_of_birth: e.date_of_birth,
+          address: e.address,
+          emergency_contact_name: e.emergency_contact_name,
+          emergency_contact_phone: e.emergency_contact_phone,
+          start_date: e.start_date,
+          end_date: e.end_date,
+          employment_type: e.employment_type,
+          pay_type: e.pay_type,
+          pay_rate: e.pay_rate,
+          hours_per_week: e.hours_per_week,
+          tax_code: e.tax_code,
+          kiwisaver_enrolled: e.kiwisaver_enrolled,
+          kiwisaver_employee_rate: e.kiwisaver_employee_rate,
+          kiwisaver_employer_rate: e.kiwisaver_employer_rate,
+          has_student_loan: e.has_student_loan,
+          leave_annual_balance: e.leave_annual_balance,
+          leave_sick_balance: e.leave_sick_balance,
+          is_active: e.is_active,
+        })),
+        sanitisationMap
+      );
+    }
+
     case "create_pay_run": {
       const db2 = getDb();
       let empIds = toolInput.employee_ids as string[] | undefined;
@@ -1847,6 +1930,34 @@ export async function executeTool(
       const updated = updateWorkContract(cId, businessId, updates);
       if (!updated) return { error: "Contract not found" };
       return { success: true, message: "Contract updated" };
+    }
+
+    case "declare_dividend": {
+      const { declareDividend } = await import("@/lib/dividends");
+      const totalAmount = toolInput.total_amount as number;
+      if (!totalAmount || totalAmount <= 0) {
+        return { error: "total_amount must be a positive number" };
+      }
+      const date = (toolInput.date as string) || todayNZ();
+      try {
+        const result = await declareDividend(businessId, {
+          date,
+          totalAmount,
+          notes: (toolInput.notes as string) || undefined,
+        });
+        return {
+          success: true,
+          resolution_number: result.resolutionNumber,
+          document_id: result.documentId,
+          total_amount: result.totalAmount,
+          transactions: result.transactionIds.length,
+          message: `Board resolution ${result.resolutionNumber} created. Dividend of $${result.totalAmount.toFixed(2)} declared and recorded. PDF saved to Document Vault under Board Resolutions.`,
+        };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : "Failed to declare dividend",
+        };
+      }
     }
 
     default:

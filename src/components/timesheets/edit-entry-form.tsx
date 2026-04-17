@@ -139,6 +139,23 @@ export function EditEntryForm({
           Billable
         </label>
         <div className="flex items-center gap-2">
+          {entry.status === "invoiced" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const res = await fetch("/api/timesheets/uninvoice", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ ids: [entry.id] }),
+                });
+                if (res.ok) onSaved();
+              }}
+            >
+              Un-invoice
+            </Button>
+          )}
           <Button type="button" variant="destructive" size="sm" onClick={handleDelete}>
             Delete
           </Button>

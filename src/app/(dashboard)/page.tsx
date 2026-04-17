@@ -495,6 +495,26 @@ export default async function DashboardPage() {
         {xeroConnected && <SyncStatus lastSync={lastSync} />}
       </div>
 
+      {/* Quick links */}
+      <div className="flex gap-3">
+        {[
+          { href: "/timesheets", label: "Timesheets", icon: "⏱" },
+          { href: "/invoices", label: "Invoices", icon: "📄" },
+          { href: "/expenses", label: "Expenses", icon: "💳" },
+          { href: "/banking/reconcile", label: "Banking", icon: "🏦" },
+          { href: "/payroll", label: "Payroll", icon: "💰" },
+        ].map((link) => (
+          <a
+            key={link.href}
+            href={link.href}
+            className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2.5 text-sm font-medium text-card-foreground hover:bg-accent transition-colors"
+          >
+            <span>{link.icon}</span>
+            {link.label}
+          </a>
+        ))}
+      </div>
+
       {/* Action items */}
       <ActionItems data={actionData} />
 

@@ -75,23 +75,49 @@ export function NotificationBell({
             No notifications
           </div>
         ) : (
-          notifications.slice(0, 10).map((n) => (
-            <DropdownMenuItem
-              key={n.id}
-              onClick={() => !n.read && markRead(n.id)}
-              className="flex flex-col items-start gap-1 p-3"
-            >
-              <div className="flex items-center gap-2">
-                {!n.read && (
-                  <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+          <>
+            {notifications.slice(0, 10).map((n) => (
+              <DropdownMenuItem
+                key={n.id}
+                onClick={() => !n.read && markRead(n.id)}
+                className="flex flex-col items-start gap-1 p-3"
+              >
+                <div className="flex items-center gap-2">
+                  {!n.read && (
+                    <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                  )}
+                  <span className="text-sm font-medium">{n.title}</span>
+                </div>
+                {n.body && (
+                  <span className="text-xs text-muted-foreground">{n.body}</span>
                 )}
-                <span className="text-sm font-medium">{n.title}</span>
-              </div>
-              {n.body && (
-                <span className="text-xs text-muted-foreground">{n.body}</span>
+              </DropdownMenuItem>
+            ))}
+            <div className="flex items-center justify-between border-t px-3 py-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={async () => {
+                    await fetch("/api/notifications/read-all", { method: "POST" });
+                    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+                    setUnreadCount(0);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Mark all read
+                </button>
               )}
-            </DropdownMenuItem>
-          ))
+              <button
+                onClick={async () => {
+                  await fetch("/api/notifications/clear", { method: "POST" });
+                  setNotifications([]);
+                  setUnreadCount(0);
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground ml-auto"
+              >
+                Clear all
+              </button>
+            </div>
+          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,5 +1,6 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { businesses } from "./businesses";
+import { dividendDeclarations } from "./dividends";
 
 export const shareholders = sqliteTable("shareholders", {
   id: text("id").primaryKey(),
@@ -8,6 +9,8 @@ export const shareholders = sqliteTable("shareholders", {
     .references(() => businesses.id, { onDelete: "cascade" }),
   name: text("name").notNull(), // encrypted
   ird_number: text("ird_number"), // encrypted
+  date_of_birth: text("date_of_birth"), // encrypted
+  address: text("address"), // encrypted
   ownership_percentage: real("ownership_percentage").notNull(),
   is_director: integer("is_director", { mode: "boolean" })
     .notNull()
@@ -35,6 +38,10 @@ export const shareholderTransactions = sqliteTable("shareholder_transactions", {
   }).notNull(),
   description: text("description"),
   amount: real("amount").notNull(), // positive = debit/drawing, negative = credit/repayment
+  dividend_declaration_id: text("dividend_declaration_id").references(
+    () => dividendDeclarations.id,
+    { onDelete: "set null" }
+  ),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

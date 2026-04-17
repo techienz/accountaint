@@ -27,6 +27,9 @@ type WorkContract = {
   document_id: string | null;
   project_name: string | null;
   project_code: string | null;
+  billing_cycle: string | null;
+  invoice_due_day: number | null;
+  invoice_send_day: number | null;
   status: string;
   notes: string | null;
 };
@@ -143,6 +146,9 @@ export default function WorkContractDetailPage() {
       wt_rate: Number(form.get("wt_rate")),
       project_name: form.get("project_name") || null,
       project_code: form.get("project_code") || null,
+      billing_cycle: form.get("billing_cycle") || null,
+      invoice_send_day: Number(form.get("invoice_send_day")) || null,
+      invoice_due_day: Number(form.get("invoice_due_day")) || null,
       notes: form.get("notes") || null,
     };
 
@@ -346,6 +352,54 @@ export default function WorkContractDetailPage() {
                 <div>
                   <Label htmlFor="project_code">Project Code</Label>
                   <Input id="project_code" name="project_code" defaultValue={contract.project_code ?? ""} placeholder="e.g. DT-2026-041" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="billing_cycle">Billing Cycle</Label>
+                  <select
+                    id="billing_cycle"
+                    name="billing_cycle"
+                    defaultValue={contract.billing_cycle ?? ""}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                  >
+                    <option value="">Not set</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="fortnightly">Fortnightly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="on_completion">On completion</option>
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="invoice_send_day">Invoice Send Day</Label>
+                  <select
+                    id="invoice_send_day"
+                    name="invoice_send_day"
+                    defaultValue={String(contract.invoice_send_day ?? "0")}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                  >
+                    <option value="0">Not set</option>
+                    <option value="-1">End of month</option>
+                    {Array.from({ length: 28 }, (_, i) => (
+                      <option key={i + 1} value={String(i + 1)}>{i + 1}{i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="invoice_due_day">Payment Due Day</Label>
+                  <select
+                    id="invoice_due_day"
+                    name="invoice_due_day"
+                    defaultValue={String(contract.invoice_due_day ?? "0")}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                  >
+                    <option value="0">Not set</option>
+                    <option value="-1">End of month</option>
+                    {Array.from({ length: 28 }, (_, i) => (
+                      <option key={i + 1} value={String(i + 1)}>{i + 1}{i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

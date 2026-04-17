@@ -30,6 +30,11 @@ export const workContracts = sqliteTable("work_contracts", {
   expiry_notified_at: integer("expiry_notified_at", { mode: "timestamp" }),
   project_name: text("project_name"),
   project_code: text("project_code"),
+  billing_cycle: text("billing_cycle", {
+    enum: ["weekly", "fortnightly", "monthly", "on_completion"],
+  }),
+  invoice_due_day: integer("invoice_due_day"), // day of month payment is due (e.g. 20)
+  invoice_send_day: integer("invoice_send_day"), // day of month to send invoice (e.g. 28 for end of month)
   notes: text("notes"),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()

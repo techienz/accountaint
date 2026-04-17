@@ -26,6 +26,8 @@ export async function GET() {
     ...s,
     name: decrypt(s.name),
     ird_number: s.ird_number ? decrypt(s.ird_number) : null,
+    date_of_birth: s.date_of_birth ? decrypt(s.date_of_birth) : null,
+    address: s.address ? decrypt(s.address) : null,
   }));
 
   return NextResponse.json(decrypted);
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { name, ird_number, ownership_percentage, is_director } = body;
+  const { name, ird_number, date_of_birth, address, ownership_percentage, is_director } = body;
 
   if (!name || ownership_percentage == null) {
     return NextResponse.json(
@@ -66,6 +68,8 @@ export async function POST(request: NextRequest) {
     business_id: business.id,
     name: encrypt(name),
     ird_number: ird_number ? encrypt(ird_number) : null,
+    date_of_birth: date_of_birth ? encrypt(date_of_birth) : null,
+    address: address ? encrypt(address) : null,
     ownership_percentage,
     is_director: is_director ?? false,
   });

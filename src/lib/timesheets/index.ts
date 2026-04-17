@@ -216,7 +216,14 @@ export function deleteTimesheetEntry(id: string, businessId: string) {
     )
     .get();
   if (!existing) return false;
-  if (existing.status !== "draft") return false;
+
+  // If invoiced, unlink from invoice first
+  if (existing.status === "invoiced" && existing.invoice_id) {
+    db.update(schema.timesheetEntries)
+      .set({ status: "approved", invoice_id: null })
+      .where(eq(schema.timesheetEntries.id, id))
+      .run();
+  }
 
   const result = db
     .delete(schema.timesheetEntries)
@@ -228,6 +235,29 @@ export function deleteTimesheetEntry(id: string, businessId: string) {
     )
     .run();
   return result.changes > 0;
+}
+
+/**
+ * Revert invoiced entries back to approved status, unlinking from invoice.
+ */
+export function uninvoiceTimesheetEntries(businessId: string, ids: string[]) {
+  const db = getDb();
+  let count = 0;
+  for (const id of ids) {
+    const result = db
+      .update(schema.timesheetEntries)
+      .set({ status: "approved", invoice_id: null, updated_at: new Date() })
+      .where(
+        and(
+          eq(schema.timesheetEntries.id, id),
+          eq(schema.timesheetEntries.business_id, businessId),
+          eq(schema.timesheetEntries.status, "invoiced")
+        )
+      )
+      .run();
+    count += result.changes;
+  }
+  return count;
 }
 
 export function approveTimesheetEntries(businessId: string, ids: string[]) {

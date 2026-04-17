@@ -31,6 +31,7 @@ interface AkahuAccount {
   last_synced_at: string | null;
   linked_budget_account_id: string | null;
   linked_business_id: string | null;
+  is_tax_savings: boolean;
 }
 
 interface BankFeedsClientProps {
@@ -249,6 +250,22 @@ export function BankFeedsClient({
                           ))}
                         </SelectContent>
                       </Select>
+                      <label className="flex items-center gap-1.5 text-sm text-muted-foreground ml-4">
+                        <input
+                          type="checkbox"
+                          checked={account.is_tax_savings}
+                          onChange={async (e) => {
+                            await fetch(`/api/akahu/accounts`, {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ accountId: account.id, is_tax_savings: e.target.checked }),
+                            });
+                            router.refresh();
+                          }}
+                          className="h-3.5 w-3.5"
+                        />
+                        Tax savings
+                      </label>
                     </div>
                   </div>
                 ))}

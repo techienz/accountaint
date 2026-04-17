@@ -112,6 +112,12 @@ export function TransactionForm({ shareholderId, taxYear, onSuccess }: Props) {
           />
         </div>
       </div>
+      {type === "dividend" && (
+        <p className="text-sm text-muted-foreground">
+          Tip: Use the &quot;Declare Dividend&quot; button above to automatically
+          generate the required board resolution PDF.
+        </p>
+      )}
       <Button type="submit" disabled={saving}>
         {saving ? "Saving..." : "Add Transaction"}
       </Button>

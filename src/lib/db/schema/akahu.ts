@@ -40,6 +40,7 @@ export const akahuAccounts = sqliteTable("akahu_accounts", {
     { onDelete: "set null" }
   ),
   linked_ledger_account_id: text("linked_ledger_account_id"),
+  is_tax_savings: integer("is_tax_savings", { mode: "boolean" }).notNull().default(false),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

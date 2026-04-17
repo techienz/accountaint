@@ -36,6 +36,8 @@ export async function GET(
     ...row,
     name: decrypt(row.name),
     ird_number: row.ird_number ? decrypt(row.ird_number) : null,
+    date_of_birth: row.date_of_birth ? decrypt(row.date_of_birth) : null,
+    address: row.address ? decrypt(row.address) : null,
   });
 }
 
@@ -71,6 +73,10 @@ export async function PUT(
   if (body.ownership_percentage != null)
     updates.ownership_percentage = body.ownership_percentage;
   if (body.is_director != null) updates.is_director = body.is_director;
+  if (body.date_of_birth !== undefined)
+    updates.date_of_birth = body.date_of_birth ? encrypt(body.date_of_birth) : null;
+  if (body.address !== undefined)
+    updates.address = body.address ? encrypt(body.address) : null;
 
   await db
     .update(shareholders)

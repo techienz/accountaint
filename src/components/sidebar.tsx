@@ -114,6 +114,19 @@ function buildNavItems(hasEmployees: boolean, xeroConnected: boolean): NavItem[]
         { href: "/assets", label: "Assets", icon: Package },
       ],
     },
+    ...(hasEmployees
+      ? [{
+          href: "/employees",
+          label: "People",
+          icon: Users,
+          collapsibleKey: "employees" as const,
+          children: [
+            { href: "/employees", label: "Employees", icon: Users },
+            { href: "/employees/new", label: "Add Employee", icon: UserPlus },
+            { href: "/payroll", label: "Payroll", icon: Banknote },
+          ],
+        }]
+      : []),
     { href: "/contacts", label: "Contacts", icon: Contact2 },
     { href: "/documents", label: "Documents", icon: FolderOpen },
     {
@@ -158,19 +171,6 @@ function buildNavItems(hasEmployees: boolean, xeroConnected: boolean): NavItem[]
         { href: "/reports/comparison", label: "Ledger vs Xero", icon: BarChart3 },
       ],
     }] : []),
-    ...(hasEmployees
-      ? [{
-          href: "/employees",
-          label: "People",
-          icon: Users,
-          collapsibleKey: "employees" as const,
-          children: [
-            { href: "/employees", label: "Employees", icon: Users },
-            { href: "/employees/new", label: "Add Employee", icon: UserPlus },
-            { href: "/payroll", label: "Payroll", icon: Banknote },
-          ],
-        }]
-      : []),
     {
       href: "/settings",
       label: "Settings",
@@ -209,6 +209,7 @@ export function Sidebar({ userName, businesses, activeBusinessId, hasEmployees =
     reports: pathname.startsWith("/reports"),
     earn: pathname.startsWith("/work-contracts") || pathname.startsWith("/timesheets") || pathname.startsWith("/invoices"),
     spend: pathname.startsWith("/contracts") || pathname.startsWith("/expenses") || pathname.startsWith("/assets"),
+    employees: pathname.startsWith("/employees") || pathname.startsWith("/payroll"),
     personal: pathname.startsWith("/budget"),
     calculators: pathname.startsWith("/calculators"),
     monitor: pathname.startsWith("/crosscheck"),

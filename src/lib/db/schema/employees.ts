@@ -7,7 +7,17 @@ export const employees = sqliteTable("employees", {
     .notNull()
     .references(() => businesses.id, { onDelete: "cascade" }),
   name: text("name").notNull(), // encrypted
+  email: text("email"), // encrypted
+  phone: text("phone"), // encrypted
+  job_title: text("job_title"),
+  department: text("department"),
+  ird_number: text("ird_number"), // encrypted
+  date_of_birth: text("date_of_birth"), // YYYY-MM-DD, encrypted
+  address: text("address"), // encrypted
+  emergency_contact_name: text("emergency_contact_name"), // encrypted
+  emergency_contact_phone: text("emergency_contact_phone"), // encrypted
   start_date: text("start_date").notNull(), // YYYY-MM-DD
+  end_date: text("end_date"), // YYYY-MM-DD — when employment ended
   employment_type: text("employment_type", {
     enum: ["full_time", "part_time", "casual"],
   }).notNull(),

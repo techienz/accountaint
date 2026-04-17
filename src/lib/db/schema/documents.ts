@@ -36,6 +36,7 @@ export const documents = sqliteTable("documents", {
       "receipt_batch",
       "receipt",
       "bank_receipt",
+      "board_resolution",
       "other",
     ],
   })
@@ -43,7 +44,7 @@ export const documents = sqliteTable("documents", {
     .default("other"),
   tax_year: text("tax_year"), // e.g. "2025"
   linked_entity_type: text("linked_entity_type", {
-    enum: ["expense", "asset", "bank_transaction", "invoice", "chat_message"],
+    enum: ["expense", "asset", "bank_transaction", "invoice", "chat_message", "dividend_declaration"],
   }),
   linked_entity_id: text("linked_entity_id"),
   extracted_text: text("extracted_text"),

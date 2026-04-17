@@ -13,6 +13,7 @@ const SYSTEM_FOLDERS = [
   { name: "Bank Receipts", icon: "🏦", sort_order: 1 },
   { name: "Tax Returns", icon: "📋", sort_order: 2 },
   { name: "IRD Guides", icon: "📚", sort_order: 3 },
+  { name: "Board Resolutions", icon: "📜", sort_order: 4 },
 ];
 
 /**

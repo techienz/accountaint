@@ -39,6 +39,7 @@ export default async function BankFeedsPage() {
           last_synced_at: a.last_synced_at?.toISOString() ?? null,
           linked_budget_account_id: a.linked_budget_account_id,
           linked_business_id: a.linked_business_id,
+          is_tax_savings: a.is_tax_savings,
         }))
     : [];
 

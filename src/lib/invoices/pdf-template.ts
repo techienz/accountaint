@@ -134,7 +134,7 @@ export function renderInvoiceHtml(data: PdfInvoiceData): string {
       <div class="party-label">From</div>
       <div class="party-name">${escapeHtml(business.name)}</div>
       ${officeAddress ? `<div>${escapeHtml(officeAddress)}</div>` : ""}
-      ${irdNumber ? `<div>IRD: ${escapeHtml(irdNumber)}</div>` : ""}
+      ${irdNumber ? `<div>GST Number: ${escapeHtml(irdNumber)}</div>` : ""}
       ${nzbn ? `<div>NZBN: ${escapeHtml(nzbn)}</div>` : ""}
     </div>
     <div class="party">

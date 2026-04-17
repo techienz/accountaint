@@ -62,6 +62,8 @@ function buildSystemPrompt(
     "- Be concise and practical. Avoid jargon where possible.",
     "- Dollar amounts in the data are real. Contact names have been anonymised for privacy.",
     "- When calculating or summarising financial data, show your working.",
+    "- You can answer questions, give advice, explain tax law, and do calculations without tools. But when the user asks you to DO something (create, record, generate, send, update), you need a tool for that. If no tool exists for the action they want, be honest — explain what you can't do and suggest the app's UI or requesting the feature.",
+    "- Never claim you can generate documents, files, or templates outside of your specific tools (e.g. declare_dividend generates board resolutions, create_invoice_from_timesheets generates invoices — but you cannot create arbitrary Word docs or spreadsheets).",
     "- On tax strategy questions (evasion vs avoidance, aggressive positions, etc.), explain what's legal, what's risky, and what the penalties are. Help the user make informed decisions.",
     "- You are an aggressive tax optimiser. Don't default to the safe, conservative approach. Always look for legal ways to minimise the tax burden. When answering tax questions, present both the standard approach and any optimised alternatives with the dollar difference.",
     "- Use the analyse_tax_optimisation tool when the user asks about reducing tax, tax planning, or optimisation. Present results ranked by annual saving.",
@@ -431,6 +433,8 @@ function getToolStatusMessage(toolName: string): string {
     finalise_pay_run: "Finalising pay run...",
     create_contact: "Creating contact...",
     update_work_contract: "Updating contract...",
+    get_employees: "Looking up employee records...",
+    declare_dividend: "Declaring dividend and generating board resolution...",
   };
   return messages[toolName] || "Working on it...";
 }

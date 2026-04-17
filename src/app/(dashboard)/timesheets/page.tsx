@@ -193,31 +193,57 @@ export default function TimesheetsPage() {
         </div>
         <div className="flex items-center gap-2">
           {contracts.length > 0 && (
-            <select
-              id="export-contract"
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              defaultValue=""
-            >
-              <option value="" disabled>Export for...</option>
-              {contracts.map((c) => (
-                <option key={c.id} value={c.id}>{c.client_name}</option>
-              ))}
-            </select>
-          )}
-          {contracts.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const sel = (document.getElementById("export-contract") as HTMLSelectElement)?.value;
-                if (!sel) return;
-                const weekEnd = new Date(weekStart);
-                weekEnd.setDate(weekEnd.getDate() + 6);
-                window.open(`/api/timesheets/export?contract_id=${sel}&week_ending=${formatDate(weekEnd)}`);
-              }}
-            >
-              <Download className="mr-1 h-3.5 w-3.5" />CSV
-            </Button>
+            <>
+              <select
+                id="export-contract"
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                defaultValue=""
+              >
+                <option value="" disabled>Export for...</option>
+                {contracts.map((c) => (
+                  <option key={c.id} value={c.id}>{c.client_name}</option>
+                ))}
+              </select>
+              <input
+                id="export-from"
+                type="date"
+                defaultValue={formatDate(weekStart)}
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm w-[130px]"
+              />
+              <span className="text-xs text-muted-foreground">to</span>
+              <input
+                id="export-to"
+                type="date"
+                defaultValue={formatDate(new Date(weekStart.getTime() + 6 * 86400000))}
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm w-[130px]"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const sel = (document.getElementById("export-contract") as HTMLSelectElement)?.value;
+                  const from = (document.getElementById("export-from") as HTMLInputElement)?.value;
+                  const to = (document.getElementById("export-to") as HTMLInputElement)?.value;
+                  if (!sel || !from || !to) return;
+                  window.open(`/api/timesheets/export?contract_id=${sel}&date_from=${from}&date_to=${to}&format=csv`);
+                }}
+              >
+                <Download className="mr-1 h-3.5 w-3.5" />CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const sel = (document.getElementById("export-contract") as HTMLSelectElement)?.value;
+                  const from = (document.getElementById("export-from") as HTMLInputElement)?.value;
+                  const to = (document.getElementById("export-to") as HTMLInputElement)?.value;
+                  if (!sel || !from || !to) return;
+                  window.open(`/api/timesheets/export?contract_id=${sel}&date_from=${from}&date_to=${to}&format=xlsx`);
+                }}
+              >
+                <Download className="mr-1 h-3.5 w-3.5" />Excel
+              </Button>
+            </>
           )}
           {draftIds.length > 0 && (
             <Button variant="outline" onClick={handleApproveAll}>

@@ -50,6 +50,7 @@ export const businesses = sqliteTable("businesses", {
   pays_contractors: integer("pays_contractors", { mode: "boolean" })
     .notNull()
     .default(false),
+  next_resolution_number: integer("next_resolution_number").notNull().default(1),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

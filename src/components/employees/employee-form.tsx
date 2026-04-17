@@ -21,6 +21,15 @@ type Props = {
 
 export function EmployeeForm({ onSubmit, initialData }: Props) {
   const [name, setName] = useState((initialData?.name as string) ?? "");
+  const [email, setEmail] = useState((initialData?.email as string) ?? "");
+  const [phone, setPhone] = useState((initialData?.phone as string) ?? "");
+  const [jobTitle, setJobTitle] = useState((initialData?.job_title as string) ?? "");
+  const [department, setDepartment] = useState((initialData?.department as string) ?? "");
+  const [irdNumber, setIrdNumber] = useState((initialData?.ird_number as string) ?? "");
+  const [dateOfBirth, setDateOfBirth] = useState((initialData?.date_of_birth as string) ?? "");
+  const [address, setAddress] = useState((initialData?.address as string) ?? "");
+  const [emergencyName, setEmergencyName] = useState((initialData?.emergency_contact_name as string) ?? "");
+  const [emergencyPhone, setEmergencyPhone] = useState((initialData?.emergency_contact_phone as string) ?? "");
   const [startDate, setStartDate] = useState(
     (initialData?.start_date as string) ?? ""
   );
@@ -65,6 +74,15 @@ export function EmployeeForm({ onSubmit, initialData }: Props) {
 
     onSubmit({
       name,
+      email: email || null,
+      phone: phone || null,
+      job_title: jobTitle || null,
+      department: department || null,
+      ird_number: irdNumber || null,
+      date_of_birth: dateOfBirth || null,
+      address: address || null,
+      emergency_contact_name: emergencyName || null,
+      emergency_contact_phone: emergencyPhone || null,
       start_date: startDate,
       employment_type: employmentType,
       pay_type: payType,
@@ -123,6 +141,108 @@ export function EmployeeForm({ onSubmit, initialData }: Props) {
               onChange={(e) => setName(e.target.value)}
               required
             />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="job_title">Job Title</Label>
+              <Input
+                id="job_title"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="e.g. Software Developer"
+              />
+            </div>
+            <div>
+              <Label htmlFor="department">Department</Label>
+              <Input
+                id="department"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+            <div>
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="ird_number">IRD Number</Label>
+              <Input
+                id="ird_number"
+                value={irdNumber}
+                onChange={(e) => setIrdNumber(e.target.value)}
+                placeholder="e.g. 12-345-678"
+              />
+            </div>
+            <div>
+              <Label htmlFor="date_of_birth">Date of Birth</Label>
+              <Input
+                id="date_of_birth"
+                type="date"
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="address">Address</Label>
+            <Input
+              id="address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-3">Emergency Contact</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="emergency_name">Name</Label>
+                <Input
+                  id="emergency_name"
+                  value={emergencyName}
+                  onChange={(e) => setEmergencyName(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+              <div>
+                <Label htmlFor="emergency_phone">Phone</Label>
+                <Input
+                  id="emergency_phone"
+                  value={emergencyPhone}
+                  onChange={(e) => setEmergencyPhone(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-3">Employment</p>
           </div>
 
           <div>

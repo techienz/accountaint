@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { xeroCache, taxSavingsTargets, businesses, invoices } from "@/lib/db/schema";
+import { xeroCache, taxSavingsTargets, businesses, invoices, akahuAccounts } from "@/lib/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { getTaxYearConfig } from "./rules";
 import { getWorkContractSummary } from "@/lib/work-contracts";
@@ -21,6 +21,7 @@ export type TaxSavingsResult = {
   totalToSetAside: number;
   monthlyBreakdown: MonthlyTarget[];
   totalActualSetAside: number;
+  savingsSource: "bank_account" | "manual";
   shortfallOrSurplus: number;
 };
 
@@ -237,10 +238,24 @@ export async function calculateTaxSavings(
     };
   });
 
-  const totalActualSetAside = monthlyBreakdown.reduce(
-    (sum, m) => sum + (m.actualSetAside || 0),
-    0
-  );
+  // Check for a linked tax savings bank account
+  const taxSavingsAccount = db
+    .select()
+    .from(akahuAccounts)
+    .where(
+      and(
+        eq(akahuAccounts.linked_business_id, businessId),
+        eq(akahuAccounts.is_tax_savings, true)
+      )
+    )
+    .get();
+
+  // Use bank account balance if linked, otherwise sum manual entries
+  const totalActualSetAside = taxSavingsAccount
+    ? Math.round(taxSavingsAccount.balance * 100) / 100
+    : monthlyBreakdown.reduce((sum, m) => sum + (m.actualSetAside || 0), 0);
+
+  const savingsSource = taxSavingsAccount ? "bank_account" as const : "manual" as const;
 
   return {
     gstOwed,
@@ -251,6 +266,7 @@ export async function calculateTaxSavings(
     totalToSetAside,
     monthlyBreakdown,
     totalActualSetAside,
+    savingsSource,
     shortfallOrSurplus:
       Math.round((totalActualSetAside - totalToSetAside) * 100) / 100,
   };
