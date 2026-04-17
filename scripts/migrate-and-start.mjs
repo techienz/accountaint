@@ -34,6 +34,19 @@ const applied = new Set(
   db.prepare("SELECT hash FROM __drizzle_migrations").all().map((r) => r.hash)
 );
 
+// Migration helper: if this is a pre-existing database (populated via
+// drizzle-kit push rather than applied migrations), skip the baseline
+// migration — it would try to re-create tables that already exist.
+const existingTables = db
+  .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != '__drizzle_migrations'")
+  .all();
+const hasUserTable = existingTables.some((t) => t.name === "users");
+if (hasUserTable && applied.size === 0) {
+  console.log(
+    `[init] Existing database detected (${existingTables.length} tables, no migration history). Marking current migrations as already applied.`
+  );
+}
+
 if (!existsSync(migrationsDir)) {
   console.warn(
     `[init] No migrations dir at ${migrationsDir} — skipping migrations.`
@@ -46,6 +59,18 @@ if (!existsSync(migrationsDir)) {
   for (const file of files) {
     const hash = file;
     if (applied.has(hash)) continue;
+
+    // Pre-existing DB: mark this migration as applied without running it,
+    // but only if it's the baseline (first) migration. Later migrations
+    // should still run normally.
+    if (hasUserTable && applied.size === 0 && files.indexOf(file) === 0) {
+      console.log(`[init] Marking ${file} as applied (pre-existing schema)`);
+      db.prepare(
+        "INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)"
+      ).run(hash, Date.now());
+      applied.add(hash);
+      continue;
+    }
 
     console.log(`[init] Applying migration ${file}`);
     const sql = readFileSync(join(migrationsDir, file), "utf-8");
