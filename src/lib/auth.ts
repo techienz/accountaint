@@ -1,12 +1,41 @@
 import { SignJWT, jwtVerify } from "jose";
 import { v4 as uuid } from "uuid";
 import { hashSync, compareSync } from "bcryptjs";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getDb, schema } from "./db";
 import { eq, and } from "drizzle-orm";
 
 const COOKIE_NAME = "session";
 const SESSION_DURATION = 7 * 24 * 60 * 60; // 7 days in seconds
+
+/**
+ * Decide whether the session cookie should be Secure (HTTPS-only).
+ *
+ * The cookie must be Secure when served over HTTPS (modern browsers reject
+ * non-Secure cookies for SameSite=None, and Secure is best-practice anyway),
+ * but it must NOT be Secure on plain HTTP — browsers silently drop the cookie
+ * and the user can't log in.
+ *
+ * Detection precedence:
+ * 1. COOKIE_SECURE env var ("true"/"false") — explicit override
+ * 2. x-forwarded-proto request header — set by reverse proxies
+ * 3. Default to false (safe for local/Docker without TLS)
+ */
+async function shouldUseSecureCookie(): Promise<boolean> {
+  const envOverride = (process.env.COOKIE_SECURE || "").trim().toLowerCase();
+  if (envOverride === "true") return true;
+  if (envOverride === "false") return false;
+
+  try {
+    const h = await headers();
+    const proto = h.get("x-forwarded-proto") ?? h.get("x-forwarded-protocol");
+    if (proto === "https") return true;
+    if (proto === "http") return false;
+  } catch {
+    // headers() not available in this context — fall through
+  }
+  return false;
+}
 
 function getJwtSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
@@ -71,7 +100,7 @@ export async function createSession(userId: string): Promise<string> {
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_DURATION,
-    secure: true,
+    secure: await shouldUseSecureCookie(),
   });
 
   return token;
