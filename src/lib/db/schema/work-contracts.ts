@@ -12,6 +12,7 @@ export const workContracts = sqliteTable("work_contracts", {
   contact_id: text("contact_id").references(() => contacts.id, {
     onDelete: "set null",
   }),
+  cc_contact_ids: text("cc_contact_ids"), // comma-separated contact UUIDs — default CC recipients
   contract_type: text("contract_type", {
     enum: ["hourly", "fixed_price", "retainer"],
   }).notNull(),

@@ -73,6 +73,31 @@ export async function sendTimesheetEmail(
     if (contactRow) linkedContactName = decrypt(contactRow.name);
   }
 
+  // Resolve default CC contacts (IDs stored as comma-separated list)
+  const defaultCcEmails: string[] = [];
+  if (contract.cc_contact_ids) {
+    const ids = contract.cc_contact_ids
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const id of ids) {
+      const row = db
+        .select()
+        .from(schema.contacts)
+        .where(eq(schema.contacts.id, id))
+        .get();
+      if (row?.email) {
+        const decrypted = decrypt(row.email);
+        if (decrypted) defaultCcEmails.push(decrypted);
+      }
+    }
+  }
+
+  // Merge caller-supplied CCs with defaults, dedupe
+  const mergedCc = Array.from(
+    new Set([...(options.ccEmails ?? []), ...defaultCcEmails].filter(Boolean))
+  ).filter((e) => e !== options.recipient); // don't CC the To address
+
   // Pull entries in range + filter by status
   const allEntries = db
     .select()
@@ -231,7 +256,7 @@ export async function sendTimesheetEmail(
     subject,
     body,
     attachments,
-    options.ccEmails && options.ccEmails.length > 0 ? options.ccEmails : undefined
+    mergedCc.length > 0 ? mergedCc : undefined
   );
 
   return {

@@ -18,6 +18,7 @@ type WorkContract = {
   id: string;
   client_name: string;
   contact_id: string | null;
+  cc_contact_ids: string | null;
   contract_type: string;
   hourly_rate: number | null;
   weekly_hours: number | null;
@@ -115,6 +116,7 @@ export default function WorkContractDetailPage() {
   const [budgetLinked, setBudgetLinked] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactId, setContactId] = useState("");
+  const [ccContactIds, setCcContactIds] = useState<string[]>([]);
 
   useEffect(() => {
     fetch(`/api/work-contracts/${params.id}`)
@@ -123,6 +125,11 @@ export default function WorkContractDetailPage() {
         setContract(data);
         setContractType(data.contract_type);
         setContactId(data.contact_id ?? "");
+        setCcContactIds(
+          data.cc_contact_ids
+            ? String(data.cc_contact_ids).split(",").map((s) => s.trim()).filter(Boolean)
+            : []
+        );
       });
     fetch(`/api/timesheets?work_contract_id=${params.id}`)
       .then((r) => r.json())
@@ -144,6 +151,7 @@ export default function WorkContractDetailPage() {
     const data = {
       client_name: form.get("client_name"),
       contact_id: contactId || null,
+      cc_contact_ids: ccContactIds.length > 0 ? ccContactIds.join(",") : null,
       contract_type: form.get("contract_type"),
       hourly_rate: form.get("hourly_rate") ? Number(form.get("hourly_rate")) : null,
       weekly_hours: form.get("weekly_hours") ? Number(form.get("weekly_hours")) : null,
@@ -291,6 +299,41 @@ export default function WorkContractDetailPage() {
                   Linking a contact lets the timesheet email flow prefill their address.
                 </p>
               </div>
+              <div>
+                <Label>CC Contacts (optional)</Label>
+                <div className="rounded-md border border-input bg-background px-3 py-2 text-sm max-h-[160px] overflow-auto">
+                  {contacts.filter((c) => c.email && c.id !== contactId).length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No other contacts with email addresses. Add them in Contacts first.
+                    </p>
+                  ) : (
+                    contacts
+                      .filter((c) => c.email && c.id !== contactId)
+                      .map((c) => (
+                        <label key={c.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={ccContactIds.includes(c.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCcContactIds([...ccContactIds, c.id]);
+                              } else {
+                                setCcContactIds(ccContactIds.filter((id) => id !== c.id));
+                              }
+                            }}
+                            className="h-4 w-4"
+                          />
+                          <span>{c.name}</span>
+                          <span className="text-xs text-muted-foreground">{c.email}</span>
+                        </label>
+                      ))
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  These contacts get CC'd by default on timesheet and invoice emails for this contract. Editable per-send.
+                </p>
+              </div>
+
               <div>
                 <Label htmlFor="client_name">Client Name (display)</Label>
                 <Input id="client_name" name="client_name" defaultValue={contract.client_name} required />
