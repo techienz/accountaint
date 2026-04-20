@@ -54,6 +54,7 @@ const contractTypes = [
 ];
 
 const wtRates = [
+  { value: "0.00", label: "0% (no WT)" },
   { value: "0.15", label: "15%" },
   { value: "0.20", label: "20%" },
   { value: "0.25", label: "25%" },
