@@ -24,7 +24,7 @@ import { listContracts, getContractSummary } from "@/lib/contracts";
 import { calculateSnapshotMetrics } from "@/lib/reports/snapshot";
 import { listExpenses, getExpenseSummary } from "@/lib/expenses";
 import { listWorkContracts, getWorkContractSummary, calculateEarningsProjection } from "@/lib/work-contracts";
-import { listTimesheetEntries, getTimesheetSummary, createTimesheetEntry, approveTimesheetEntries } from "@/lib/timesheets";
+import { listTimesheetEntries, getTimesheetSummary, createTimesheetEntry, approveTimesheetEntries, deleteTimesheetEntry } from "@/lib/timesheets";
 import { listInvoices, getInvoiceSummary, toXeroInvoiceFormat } from "@/lib/invoices";
 import { createInvoiceFromTimesheets } from "@/lib/invoices/from-timesheets";
 import { sendInvoiceEmail } from "@/lib/invoices/email";
@@ -757,6 +757,21 @@ export const chatTools: Tool[] = [
         },
       },
       required: [],
+    },
+  },
+  {
+    name: "delete_timesheet_entries",
+    description: "Delete one or more timesheet entries. Works on any status — if an entry is already invoiced, it will be unlinked from the invoice first. Use get_recent_time_entries or get_timesheet_summary to find entry IDs first. Always confirm the user's intent before deleting more than one entry.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        entry_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of timesheet entry IDs to delete. Required — never defaults to 'all'.",
+        },
+      },
+      required: ["entry_ids"],
     },
   },
   {
@@ -1790,6 +1805,25 @@ export async function executeTool(
       if (allDraft.length === 0) return { message: "No draft entries to approve" };
       const count = approveTimesheetEntries(businessId, allDraft.map((e) => e.id));
       return { success: true, approved: count };
+    }
+
+    case "delete_timesheet_entries": {
+      const entryIds = toolInput.entry_ids as string[] | undefined;
+      if (!entryIds || entryIds.length === 0) {
+        return { error: "entry_ids is required — specify which entries to delete" };
+      }
+      let deleted = 0;
+      const notFound: string[] = [];
+      for (const id of entryIds) {
+        const ok = deleteTimesheetEntry(id, businessId);
+        if (ok) deleted++;
+        else notFound.push(id);
+      }
+      return {
+        success: true,
+        deleted,
+        not_found: notFound.length > 0 ? notFound : undefined,
+      };
     }
 
     case "create_expense": {

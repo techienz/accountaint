@@ -427,6 +427,7 @@ function getToolStatusMessage(toolName: string): string {
     suggest_bank_matches: "Finding matches...",
     create_timesheet_entry: "Logging time...",
     approve_timesheet_entries: "Approving timesheets...",
+    delete_timesheet_entries: "Deleting timesheet entries...",
     create_expense: "Recording expense...",
     send_invoice_email: "Sending invoice...",
     create_pay_run: "Creating pay run...",
