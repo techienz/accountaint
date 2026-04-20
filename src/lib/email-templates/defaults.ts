@@ -24,6 +24,7 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKind, TemplateDefault> = {
 <p>Please find attached {{document_kind_lower}} {{invoice_number}}.</p>
 <p><strong>Amount due:</strong> {{amount_due}}<br>
 <strong>Due date:</strong> {{due_date}}</p>
+{{payment_instructions}}
 <p>Thanks,<br>
 {{business_name}}</p>`,
     placeholders: [
@@ -33,8 +34,13 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKind, TemplateDefault> = {
       { key: "document_kind", description: "'Invoice' or 'Bill' — capitalised" },
       { key: "document_kind_lower", description: "'invoice' or 'bill'" },
       { key: "amount_due", description: "Formatted $ amount" },
-      { key: "due_date", description: "Due date, YYYY-MM-DD" },
+      { key: "due_date", description: "Due date, DD-MM-YYYY" },
       { key: "total_amount", description: "Invoice total (incl. GST)" },
+      {
+        key: "payment_instructions",
+        description:
+          "Your saved payment instructions (bank account etc.) wrapped in a paragraph. Blank if none set.",
+      },
     ],
     sampleData: {
       business_name: "Acme Contracting Ltd",
@@ -43,8 +49,10 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKind, TemplateDefault> = {
       document_kind: "Invoice",
       document_kind_lower: "invoice",
       amount_due: "$2,415.00",
-      due_date: "2026-05-20",
+      due_date: "20-05-2026",
       total_amount: "$2,415.00",
+      payment_instructions:
+        "<p><strong>Payment details:</strong><br>Bank: 12-3456-7890123-00<br>Reference: INV-0042</p>",
     },
   },
   timesheet: {
@@ -63,8 +71,8 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKind, TemplateDefault> = {
       { key: "business_name", description: "Your business name" },
       { key: "contact_name", description: "Recipient's name (may be blank)" },
       { key: "project", description: "Project / work contract name" },
-      { key: "period_start", description: "Period start date, YYYY-MM-DD" },
-      { key: "period_end", description: "Period end date, YYYY-MM-DD" },
+      { key: "period_start", description: "Period start date, DD-MM-YYYY" },
+      { key: "period_end", description: "Period end date, DD-MM-YYYY" },
       { key: "total_hours", description: "Total hours in period, e.g. 38.5" },
       { key: "total_amount", description: "Billable total, e.g. $3,850.00" },
       { key: "entry_count", description: "Number of timesheet entries" },
@@ -73,8 +81,8 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKind, TemplateDefault> = {
       business_name: "Acme Contracting Ltd",
       contact_name: "Sam Patel",
       project: "Project Phoenix",
-      period_start: "2026-04-13",
-      period_end: "2026-04-19",
+      period_start: "13-04-2026",
+      period_end: "19-04-2026",
       total_hours: "38.5",
       total_amount: "$3,850.00",
       entry_count: "5",
@@ -95,18 +103,18 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKind, TemplateDefault> = {
     placeholders: [
       { key: "business_name", description: "Your business name" },
       { key: "employee_name", description: "Employee's name" },
-      { key: "period_start", description: "Pay period start YYYY-MM-DD" },
-      { key: "period_end", description: "Pay period end YYYY-MM-DD" },
-      { key: "pay_date", description: "Pay date YYYY-MM-DD" },
+      { key: "period_start", description: "Pay period start DD-MM-YYYY" },
+      { key: "period_end", description: "Pay period end DD-MM-YYYY" },
+      { key: "pay_date", description: "Pay date DD-MM-YYYY" },
       { key: "gross_pay", description: "Gross pay amount" },
       { key: "net_pay", description: "Net pay amount" },
     ],
     sampleData: {
       business_name: "Acme Contracting Ltd",
       employee_name: "Alex Chen",
-      period_start: "2026-04-06",
-      period_end: "2026-04-19",
-      pay_date: "2026-04-22",
+      period_start: "06-04-2026",
+      period_end: "19-04-2026",
+      pay_date: "22-04-2026",
       gross_pay: "$1,923.08",
       net_pay: "$1,447.56",
     },

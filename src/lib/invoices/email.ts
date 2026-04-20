@@ -6,6 +6,7 @@ import { generateInvoicePdf } from "./pdf";
 import { sendEmail } from "@/lib/notifications/email";
 import { buildEmailConfig } from "@/lib/notifications/email-config";
 import { getTemplate, renderTemplate } from "@/lib/email-templates";
+import { formatDateNzDash } from "@/lib/utils/format-date-nz";
 
 export async function sendInvoiceEmail(
   invoiceId: string,
@@ -58,6 +59,13 @@ export async function sendInvoiceEmail(
   const fmt = (n: number) =>
     "$" + n.toLocaleString("en-NZ", { minimumFractionDigits: 2 });
 
+  // If business has saved payment instructions, wrap them as a paragraph
+  // block so placeholder rendering drops nothing in when there's nothing saved.
+  const paymentInstructionsBlock = business.payment_instructions?.trim()
+    ? `<p><strong>Payment details:</strong><br>${business.payment_instructions
+        .replace(/\n/g, "<br>")}</p>`
+    : "";
+
   const variables = {
     business_name: business.name,
     contact_name: contact.name,
@@ -65,8 +73,9 @@ export async function sendInvoiceEmail(
     document_kind: isInvoice ? "Invoice" : "Bill",
     document_kind_lower: isInvoice ? "invoice" : "bill",
     amount_due: fmt(invoice.amount_due),
-    due_date: invoice.due_date,
+    due_date: formatDateNzDash(invoice.due_date),
     total_amount: fmt(invoice.total),
+    payment_instructions: paymentInstructionsBlock,
   };
 
   const emailSubject = subject?.trim() || renderTemplate(template.subject, variables);

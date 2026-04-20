@@ -4,6 +4,7 @@ import { decrypt } from "@/lib/encryption";
 import { sendEmail, type EmailAttachment } from "@/lib/notifications/email";
 import { buildEmailConfig } from "@/lib/notifications/email-config";
 import { getTemplate, renderTemplate } from "@/lib/email-templates";
+import { formatDateNzDash } from "@/lib/utils/format-date-nz";
 import {
   generateTimesheetCsv,
   generateTimesheetXlsx,
@@ -132,8 +133,8 @@ export async function sendTimesheetEmail(
     contact_name: "", // blank when recipient is entered manually; the sender can override
     project:
       projectCode ? `${projectName} (${projectCode})` : projectName,
-    period_start: options.dateFrom,
-    period_end: options.dateTo,
+    period_start: formatDateNzDash(options.dateFrom),
+    period_end: formatDateNzDash(options.dateTo),
     total_hours: totalHours.toFixed(2),
     total_amount:
       "$" +

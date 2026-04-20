@@ -4,6 +4,7 @@ import { decrypt } from "@/lib/encryption";
 import { sendEmail } from "@/lib/notifications/email";
 import { buildEmailConfig } from "@/lib/notifications/email-config";
 import { getTemplate, renderTemplate } from "@/lib/email-templates";
+import { formatDateNzDash } from "@/lib/utils/format-date-nz";
 import { getNzTaxYear } from "@/lib/tax/rules";
 import { getPayRun, getPayRunYtd } from "./index";
 import { generatePayslipPdf } from "./payslip-pdf";
@@ -152,9 +153,9 @@ export async function sendPayslipEmails(
       const variables = {
         business_name: business.name,
         employee_name: employeeName,
-        period_start: payRun.period_start,
-        period_end: payRun.period_end,
-        pay_date: payRun.pay_date,
+        period_start: formatDateNzDash(payRun.period_start),
+        period_end: formatDateNzDash(payRun.period_end),
+        pay_date: formatDateNzDash(payRun.pay_date),
         gross_pay: fmt(line.gross_pay),
         net_pay: fmt(line.net_pay),
       };
