@@ -62,12 +62,29 @@ export function countSubscriptions(userId: string): number {
     .all().length;
 }
 
+export type PushSendResult = {
+  attempted: number;
+  succeeded: number;
+  cleaned_up: number;
+  errors: Array<{ statusCode?: number; message: string; endpoint: string }>;
+};
+
 export async function sendPushToUser(userId: string, payload: {
   title: string;
   body?: string;
   url?: string;
-}) {
-  if (!initVapid()) return;
+}): Promise<PushSendResult> {
+  const result: PushSendResult = {
+    attempted: 0,
+    succeeded: 0,
+    cleaned_up: 0,
+    errors: [],
+  };
+
+  if (!initVapid()) {
+    result.errors.push({ message: "VAPID not configured", endpoint: "" });
+    return result;
+  }
 
   const db = getDb();
   const subscriptions = db
@@ -79,18 +96,36 @@ export async function sendPushToUser(userId: string, payload: {
   const message = JSON.stringify(payload);
 
   for (const sub of subscriptions) {
+    result.attempted++;
     try {
       const keys = JSON.parse(sub.keys_json);
       await webPush.sendNotification(
         { endpoint: sub.endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } },
         message
       );
+      result.succeeded++;
     } catch (error: unknown) {
-      if (error && typeof error === "object" && "statusCode" in error && (error as { statusCode: number }).statusCode === 410) {
+      const e = error as { statusCode?: number; message?: string; body?: string };
+      const endpointShort = sub.endpoint.slice(0, 60) + "...";
+      const statusCode = e.statusCode;
+      const errMsg = e.body || e.message || "unknown error";
+      console.error(
+        `[push] send failed for ${endpointShort} status=${statusCode}:`,
+        errMsg
+      );
+      result.errors.push({
+        statusCode,
+        message: errMsg,
+        endpoint: endpointShort,
+      });
+      // 404/410 = subscription gone. Clean up.
+      if (statusCode === 404 || statusCode === 410) {
         db.delete(schema.pushSubscriptions)
           .where(eq(schema.pushSubscriptions.id, sub.id))
           .run();
+        result.cleaned_up++;
       }
     }
   }
+  return result;
 }

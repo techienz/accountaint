@@ -22,11 +22,15 @@ export async function POST() {
     );
   }
 
-  await sendPushToUser(session.user.id, {
+  const result = await sendPushToUser(session.user.id, {
     title: "Accountaint test notification",
     body: "If you can read this, desktop push is working.",
     url: "/",
   });
 
-  return NextResponse.json({ success: true, sent_to_subscriptions: count });
+  return NextResponse.json({
+    success: result.succeeded > 0,
+    sent_to_subscriptions: count,
+    ...result,
+  });
 }

@@ -78,12 +78,41 @@ export function DesktopPushControl() {
         (await navigator.serviceWorker.register("/sw.js"));
       await navigator.serviceWorker.ready;
 
+      // If there's a cached subscription with a different applicationServerKey
+      // (e.g. from a previous VAPID config), drop it before subscribing.
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        const existingKey = existing.options?.applicationServerKey;
+        const wantedKey = urlBase64ToUint8Array(vapidPublicKey);
+        const same =
+          existingKey instanceof ArrayBuffer &&
+          wantedKey instanceof ArrayBuffer &&
+          existingKey.byteLength === wantedKey.byteLength &&
+          new Uint8Array(existingKey).every(
+            (v, i) => v === new Uint8Array(wantedKey)[i]
+          );
+        if (!same) {
+          await existing.unsubscribe();
+        }
+      }
+
       let subscription = await reg.pushManager.getSubscription();
       if (!subscription) {
-        subscription = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-        });
+        try {
+          subscription = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+          });
+        } catch (err) {
+          // Surface the real underlying error from the browser
+          const msg =
+            err instanceof Error
+              ? `${err.name}: ${err.message}`
+              : "Push subscribe failed";
+          throw new Error(
+            `${msg} — see browser console for details. Common causes: VAPID key mismatch (regenerate keys), browser blocking the push service, or pre-existing subscription with different keys.`
+          );
+        }
       }
 
       const json = subscription.toJSON();
@@ -139,7 +168,22 @@ export function DesktopPushControl() {
       const res = await fetch("/api/notifications/push-test", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Test failed");
-      setMessage(`Test sent to ${data.sent_to_subscriptions} browser(s). Check for the notification.`);
+
+      if (data.succeeded > 0) {
+        const cleaned = data.cleaned_up
+          ? ` (cleaned up ${data.cleaned_up} stale subscription${data.cleaned_up === 1 ? "" : "s"})`
+          : "";
+        setMessage(
+          `Sent push to ${data.succeeded}/${data.attempted} browser(s)${cleaned}. If you don't see a notification, check your OS notification settings (Do Not Disturb, focus mode) and that the browser is allowed to show notifications.`
+        );
+      } else {
+        const errParts = (data.errors as Array<{ statusCode?: number; message: string }>).map(
+          (e) => (e.statusCode ? `[${e.statusCode}] ` : "") + e.message
+        );
+        setMessage(
+          `Push send failed (0/${data.attempted}). ${errParts.join("; ") || "Check server logs."}`
+        );
+      }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Test failed");
     } finally {
