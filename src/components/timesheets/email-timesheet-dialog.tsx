@@ -26,6 +26,7 @@ type Contract = {
   id: string;
   client_name: string;
   contact_id?: string | null;
+  cc_contact_ids?: string | null;
 };
 
 type Props = {
@@ -83,18 +84,43 @@ export function EmailTimesheetDialog({
       .catch(() => setAllContacts([]));
   }, [open]);
 
-  // When contract changes, look up the linked contact email so the "Use contact email" button can prefill.
+  // When contract changes, look up the linked contact email + prefill CCs
+  // from the contract's cc_contact_ids field.
   useEffect(() => {
     if (!open || !contractId) return;
     const contract = contracts.find((c) => c.id === contractId);
+
+    // Primary contact email
     if (!contract?.contact_id) {
       setContactEmail(null);
+    } else {
+      fetch(`/api/contacts/${contract.contact_id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((c: ContactSummary | null) => setContactEmail(c?.email ?? null))
+        .catch(() => setContactEmail(null));
+    }
+
+    // Default CC emails from contract
+    const ccIds = (contract?.cc_contact_ids || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ccIds.length === 0) {
+      setCc("");
       return;
     }
-    fetch(`/api/contacts/${contract.contact_id}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((c: ContactSummary | null) => setContactEmail(c?.email ?? null))
-      .catch(() => setContactEmail(null));
+    Promise.all(
+      ccIds.map((id) =>
+        fetch(`/api/contacts/${id}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
+      )
+    ).then((results) => {
+      const emails = (results as (ContactSummary | null)[])
+        .filter((c): c is ContactSummary => !!c && !!c.email)
+        .map((c) => c.email as string);
+      setCc(emails.join(", "));
+    });
   }, [open, contractId, contracts]);
 
   function applyContactEmail() {

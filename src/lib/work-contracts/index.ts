@@ -9,6 +9,7 @@ type WorkContractStatus = "active" | "expiring_soon" | "expired" | "completed" |
 type WorkContractInput = {
   client_name: string;
   contact_id?: string | null;
+  cc_contact_ids?: string | null; // comma-separated UUIDs
   contract_type: ContractType;
   hourly_rate?: number | null;
   weekly_hours?: number | null;
@@ -136,6 +137,7 @@ export function createWorkContract(businessId: string, data: WorkContractInput) 
       business_id: businessId,
       client_name: encrypt(data.client_name),
       contact_id: data.contact_id ?? null,
+      cc_contact_ids: data.cc_contact_ids || null,
       contract_type: data.contract_type,
       hourly_rate: data.hourly_rate ?? null,
       weekly_hours: data.weekly_hours ?? null,
@@ -181,6 +183,7 @@ export function updateWorkContract(
 
   if (data.client_name !== undefined) updates.client_name = encrypt(data.client_name);
   if (data.contact_id !== undefined) updates.contact_id = data.contact_id || null;
+  if (data.cc_contact_ids !== undefined) updates.cc_contact_ids = data.cc_contact_ids || null;
   if (data.contract_type !== undefined) updates.contract_type = data.contract_type;
   if (data.hourly_rate !== undefined) updates.hourly_rate = data.hourly_rate;
   if (data.weekly_hours !== undefined) updates.weekly_hours = data.weekly_hours;

@@ -30,6 +30,7 @@ export default function NewWorkContractPage() {
   const [contractType, setContractType] = useState("hourly");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactId, setContactId] = useState("");
+  const [ccContactIds, setCcContactIds] = useState<string[]>([]);
   const [clientName, setClientName] = useState("");
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function NewWorkContractPage() {
     const data = {
       client_name: clientName,
       contact_id: contactId || null,
+      cc_contact_ids: ccContactIds.length > 0 ? ccContactIds.join(",") : null,
       contract_type: form.get("contract_type"),
       hourly_rate: form.get("hourly_rate") ? Number(form.get("hourly_rate")) : null,
       weekly_hours: form.get("weekly_hours") ? Number(form.get("weekly_hours")) : null,
@@ -107,6 +109,41 @@ export default function NewWorkContractPage() {
               <p className="text-xs text-muted-foreground mt-1">
                 Linking a contact lets the timesheet email flow prefill their
                 address. You can still change the displayed client name below.
+              </p>
+            </div>
+
+            <div>
+              <Label>CC Contacts (optional)</Label>
+              <div className="rounded-md border border-input bg-background px-3 py-2 text-sm max-h-[160px] overflow-auto">
+                {contacts.filter((c) => c.email && c.id !== contactId).length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No other contacts with email addresses yet. Add them in Contacts first.
+                  </p>
+                ) : (
+                  contacts
+                    .filter((c) => c.email && c.id !== contactId)
+                    .map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={ccContactIds.includes(c.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setCcContactIds([...ccContactIds, c.id]);
+                            } else {
+                              setCcContactIds(ccContactIds.filter((id) => id !== c.id));
+                            }
+                          }}
+                          className="h-4 w-4"
+                        />
+                        <span>{c.name}</span>
+                        <span className="text-xs text-muted-foreground">{c.email}</span>
+                      </label>
+                    ))
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                These contacts will be CC'd by default when emailing timesheets or invoices for this contract. Editable per-send.
               </p>
             </div>
 

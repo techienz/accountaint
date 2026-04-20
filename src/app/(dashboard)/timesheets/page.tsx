@@ -31,6 +31,7 @@ type ActiveContract = {
   client_name: string;
   status: string;
   contact_id?: string | null;
+  cc_contact_ids?: string | null;
 };
 
 function getMonday(d: Date): Date {
@@ -250,6 +251,7 @@ export default function TimesheetsPage() {
                   id: c.id,
                   client_name: c.client_name,
                   contact_id: c.contact_id ?? null,
+                  cc_contact_ids: c.cc_contact_ids ?? null,
                 }))}
                 defaultDateFrom={formatDate(weekStart)}
                 defaultDateTo={formatDate(new Date(weekStart.getTime() + 6 * 86400000))}
