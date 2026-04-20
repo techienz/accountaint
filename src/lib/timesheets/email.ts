@@ -62,6 +62,17 @@ export async function sendTimesheetEmail(
   const projectName = contract.project_name || clientName;
   const projectCode = contract.project_code || null;
 
+  // Resolve linked contact name for {{contact_name}} if present
+  let linkedContactName = "";
+  if (contract.contact_id) {
+    const contactRow = db
+      .select()
+      .from(schema.contacts)
+      .where(eq(schema.contacts.id, contract.contact_id))
+      .get();
+    if (contactRow) linkedContactName = decrypt(contactRow.name);
+  }
+
   // Pull entries in range + filter by status
   const allEntries = db
     .select()
@@ -130,7 +141,7 @@ export async function sendTimesheetEmail(
   const template = getTemplate(options.businessId, "timesheet");
   const variables = {
     business_name: business.name,
-    contact_name: "", // blank when recipient is entered manually; the sender can override
+    contact_name: linkedContactName, // empty if no contact linked; still overridable per-send
     project:
       projectCode ? `${projectName} (${projectCode})` : projectName,
     period_start: formatDateNzDash(options.dateFrom),

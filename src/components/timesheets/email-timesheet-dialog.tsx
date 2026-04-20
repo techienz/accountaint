@@ -41,6 +41,12 @@ type ContactSummary = {
   email: string | null;
 };
 
+type ContactOption = {
+  id: string;
+  name: string;
+  email: string | null;
+};
+
 export function EmailTimesheetDialog({
   contracts,
   defaultContractId,
@@ -61,9 +67,21 @@ export function EmailTimesheetDialog({
   const [body, setBody] = useState("");
   const [overrideTemplate, setOverrideTemplate] = useState(false);
   const [contactEmail, setContactEmail] = useState<string | null>(null);
+  const [allContacts, setAllContacts] = useState<ContactOption[]>([]);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error" | null>(null);
+
+  // When dialog opens, load all contacts for the picker
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/contacts")
+      .then((r) => r.json())
+      .then((data: ContactOption[]) =>
+        setAllContacts(data.filter((c) => c.email))
+      )
+      .catch(() => setAllContacts([]));
+  }, [open]);
 
   // When contract changes, look up the linked contact email so the "Use contact email" button can prefill.
   useEffect(() => {
@@ -81,6 +99,12 @@ export function EmailTimesheetDialog({
 
   function applyContactEmail() {
     if (contactEmail) setRecipient(contactEmail);
+  }
+
+  function pickContact(contactId: string) {
+    if (!contactId) return;
+    const c = allContacts.find((x) => x.id === contactId);
+    if (c?.email) setRecipient(c.email);
   }
 
   function reset() {
@@ -207,7 +231,7 @@ export function EmailTimesheetDialog({
                   onClick={applyContactEmail}
                   className="text-xs text-primary hover:underline"
                 >
-                  Use contact email ({contactEmail})
+                  Use linked contact ({contactEmail})
                 </button>
               )}
             </div>
@@ -218,6 +242,28 @@ export function EmailTimesheetDialog({
               onChange={(e) => setRecipient(e.target.value)}
               placeholder="name@example.com"
             />
+            {allContacts.length > 0 && (
+              <div className="mt-2">
+                <Label className="text-xs text-muted-foreground">
+                  Or pick from your contacts:
+                </Label>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    pickContact(e.target.value);
+                    e.target.value = "";
+                  }}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="">— Select a contact —</option>
+                  {allContacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {c.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div>

@@ -12,9 +12,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { EarningsCard } from "@/components/work-contracts/earnings-card";
 import { ArrowLeft } from "lucide-react";
 
+type Contact = { id: string; name: string; email: string | null };
+
 type WorkContract = {
   id: string;
   client_name: string;
+  contact_id: string | null;
   contract_type: string;
   hourly_rate: number | null;
   weekly_hours: number | null;
@@ -110,6 +113,8 @@ export default function WorkContractDetailPage() {
   const [saving, setSaving] = useState(false);
   const [contractType, setContractType] = useState("hourly");
   const [budgetLinked, setBudgetLinked] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactId, setContactId] = useState("");
 
   useEffect(() => {
     fetch(`/api/work-contracts/${params.id}`)
@@ -117,15 +122,18 @@ export default function WorkContractDetailPage() {
       .then((data) => {
         setContract(data);
         setContractType(data.contract_type);
+        setContactId(data.contact_id ?? "");
       });
     fetch(`/api/timesheets?work_contract_id=${params.id}`)
       .then((r) => r.json())
       .then((data) => setEntries(data.slice(0, 10)));
-    // Check if linked to budget
     fetch(`/api/budget/link-contract?contract_id=${params.id}`)
       .then((r) => r.json())
       .then((data) => setBudgetLinked(data.linked === true))
       .catch(() => setBudgetLinked(false));
+    fetch("/api/contacts")
+      .then((r) => r.json())
+      .then((data: Contact[]) => setContacts(data));
   }, [params.id]);
 
   async function handleSave(e: React.FormEvent<HTMLFormElement>) {
@@ -135,6 +143,7 @@ export default function WorkContractDetailPage() {
     const form = new FormData(e.currentTarget);
     const data = {
       client_name: form.get("client_name"),
+      contact_id: contactId || null,
       contract_type: form.get("contract_type"),
       hourly_rate: form.get("hourly_rate") ? Number(form.get("hourly_rate")) : null,
       weekly_hours: form.get("weekly_hours") ? Number(form.get("weekly_hours")) : null,
@@ -264,7 +273,26 @@ export default function WorkContractDetailPage() {
           <CardContent className="pt-6">
             <form onSubmit={handleSave} className="space-y-4">
               <div>
-                <Label htmlFor="client_name">Client Name</Label>
+                <Label htmlFor="contact_id_edit">Linked Contact (optional)</Label>
+                <select
+                  id="contact_id_edit"
+                  value={contactId}
+                  onChange={(e) => setContactId(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                >
+                  <option value="">— No linked contact —</option>
+                  {contacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.email ? ` — ${c.email}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Linking a contact lets the timesheet email flow prefill their address.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="client_name">Client Name (display)</Label>
                 <Input id="client_name" name="client_name" defaultValue={contract.client_name} required />
               </div>
 

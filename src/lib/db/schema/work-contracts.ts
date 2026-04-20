@@ -1,6 +1,7 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { businesses } from "./businesses";
 import { documents } from "./documents";
+import { contacts } from "./contacts";
 
 export const workContracts = sqliteTable("work_contracts", {
   id: text("id").primaryKey(),
@@ -8,6 +9,9 @@ export const workContracts = sqliteTable("work_contracts", {
     .notNull()
     .references(() => businesses.id, { onDelete: "cascade" }),
   client_name: text("client_name").notNull(), // encrypted
+  contact_id: text("contact_id").references(() => contacts.id, {
+    onDelete: "set null",
+  }),
   contract_type: text("contract_type", {
     enum: ["hourly", "fixed_price", "retainer"],
   }).notNull(),

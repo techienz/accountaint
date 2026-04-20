@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+
+type Contact = { id: string; name: string; email: string | null };
 
 const contractTypes = [
   { value: "hourly", label: "Hourly" },
@@ -26,6 +28,25 @@ export default function NewWorkContractPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [contractType, setContractType] = useState("hourly");
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactId, setContactId] = useState("");
+  const [clientName, setClientName] = useState("");
+
+  useEffect(() => {
+    fetch("/api/contacts")
+      .then((r) => r.json())
+      .then((data: Contact[]) => setContacts(data));
+  }, []);
+
+  // When a contact is selected, default the client_name from the contact's name
+  useEffect(() => {
+    if (!contactId) return;
+    const contact = contacts.find((c) => c.id === contactId);
+    if (contact && !clientName.trim()) {
+      setClientName(contact.name);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactId]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -33,7 +54,8 @@ export default function NewWorkContractPage() {
 
     const form = new FormData(e.currentTarget);
     const data = {
-      client_name: form.get("client_name"),
+      client_name: clientName,
+      contact_id: contactId || null,
       contract_type: form.get("contract_type"),
       hourly_rate: form.get("hourly_rate") ? Number(form.get("hourly_rate")) : null,
       weekly_hours: form.get("weekly_hours") ? Number(form.get("weekly_hours")) : null,
@@ -68,8 +90,35 @@ export default function NewWorkContractPage() {
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="client_name">Client Name</Label>
-              <Input id="client_name" name="client_name" required />
+              <Label htmlFor="contact_id">Linked Contact (optional)</Label>
+              <select
+                id="contact_id"
+                value={contactId}
+                onChange={(e) => setContactId(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+              >
+                <option value="">— No linked contact —</option>
+                {contacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.email ? ` — ${c.email}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Linking a contact lets the timesheet email flow prefill their
+                address. You can still change the displayed client name below.
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="client_name">Client Name (display)</Label>
+              <Input
+                id="client_name"
+                name="client_name"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                required
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
