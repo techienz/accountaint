@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const PUBLIC_PATHS = ["/login", "/setup", "/api/auth/", "/api/health", "/_next/", "/favicon.ico"];
+const PUBLIC_STATIC_PATTERNS = [
+  /^\/manifest\.json$/,
+  /^\/icon-\d+\.png$/,
+  /^\/icon\.svg$/,
+  /^\/apple-touch-icon\.png$/,
+  /^\/[a-z]+-touch-icon\.png$/,
+];
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return true;
+  return PUBLIC_STATIC_PATTERNS.some((re) => re.test(pathname));
 }
 
 export async function proxy(request: NextRequest) {
