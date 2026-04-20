@@ -5,6 +5,7 @@ import { sendEmail } from "@/lib/notifications/email";
 import { buildEmailConfig } from "@/lib/notifications/email-config";
 import { getTemplate, renderTemplate } from "@/lib/email-templates";
 import { formatDateNzDash } from "@/lib/utils/format-date-nz";
+import { recordEmail } from "@/lib/email-log";
 import { getNzTaxYear } from "@/lib/tax/rules";
 import { getPayRun, getPayRunYtd } from "./index";
 import { generatePayslipPdf } from "./payslip-pdf";
@@ -165,13 +166,27 @@ export async function sendPayslipEmails(
       const body =
         options.body?.trim() || renderTemplate(template.body, variables);
 
+      const attachmentName = `Payslip_${payRun.pay_date}_${employeeName.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
       await sendEmail(emailConfig, subject, body, [
         {
-          filename: `Payslip_${payRun.pay_date}_${employeeName.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
+          filename: attachmentName,
           content: pdf,
           contentType: "application/pdf",
         },
       ]);
+
+      recordEmail({
+        businessId: options.businessId,
+        kind: "payslip",
+        provider: emailConfig.provider === "graph" ? "graph" : "smtp",
+        fromAddress: emailConfig.from_address,
+        toAddress: recipient,
+        subject,
+        attachmentNames: [attachmentName],
+        success: true,
+        relatedEntityType: "pay_run",
+        relatedEntityId: options.payRunId,
+      });
 
       results.push({
         employeeId: line.employee_id,
@@ -180,13 +195,26 @@ export async function sendPayslipEmails(
         sent: true,
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Send failed";
       results.push({
         employeeId: line.employee_id,
         employeeName,
         recipient,
         sent: false,
-        error: err instanceof Error ? err.message : "Send failed",
+        error: message,
       });
+      if (recipient) {
+        recordEmail({
+          businessId: options.businessId,
+          kind: "payslip",
+          toAddress: recipient,
+          subject: `Payslip — ${payRun.period_start} to ${payRun.period_end}`,
+          success: false,
+          errorMessage: message,
+          relatedEntityType: "pay_run",
+          relatedEntityId: options.payRunId,
+        });
+      }
     }
   }
 
