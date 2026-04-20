@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DesktopPushControl } from "@/components/notifications/desktop-push-control";
 
 type Pref = {
   id: string;
@@ -133,6 +134,12 @@ export function NotificationPrefsClient({ businessId, preferences }: Props) {
                   </SelectContent>
                 </Select>
               </div>
+
+              {ch.key === "desktop" && (
+                <div className="space-y-2 rounded-md border border-border/50 p-3">
+                  <DesktopPushControl />
+                </div>
+              )}
 
               {ch.key === "email" && (
                 <div className="space-y-3">
