@@ -43,6 +43,8 @@ export async function POST(request: Request) {
 
   const contract = createWorkContract(session.activeBusiness.id, {
     client_name,
+    contact_id: body.contact_id ?? null,
+    cc_contact_ids: body.cc_contact_ids ?? null,
     contract_type,
     hourly_rate: body.hourly_rate ?? null,
     weekly_hours: body.weekly_hours ?? null,
@@ -53,6 +55,11 @@ export async function POST(request: Request) {
     end_date: body.end_date ?? null,
     wt_rate,
     document_id: body.document_id ?? null,
+    project_name: body.project_name ?? null,
+    project_code: body.project_code ?? null,
+    billing_cycle: body.billing_cycle ?? null,
+    invoice_due_day: body.invoice_due_day ?? null,
+    invoice_send_day: body.invoice_send_day ?? null,
     notes: body.notes ?? null,
   });
 

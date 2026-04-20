@@ -84,20 +84,28 @@ export function EmailTimesheetDialog({
       .catch(() => setAllContacts([]));
   }, [open]);
 
-  // When contract changes, look up the linked contact email + prefill CCs
-  // from the contract's cc_contact_ids field.
+  // When contract changes, look up the linked contact email + prefill the
+  // Recipient field with it (and the CC field from cc_contact_ids).
   useEffect(() => {
     if (!open || !contractId) return;
     const contract = contracts.find((c) => c.id === contractId);
 
-    // Primary contact email
+    // Primary contact → prefill the Recipient (To) and remember for the
+    // "Use linked contact" button so the user can re-apply if they edit.
     if (!contract?.contact_id) {
       setContactEmail(null);
+      setRecipient("");
     } else {
       fetch(`/api/contacts/${contract.contact_id}`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((c: ContactSummary | null) => setContactEmail(c?.email ?? null))
-        .catch(() => setContactEmail(null));
+        .then((c: ContactSummary | null) => {
+          setContactEmail(c?.email ?? null);
+          setRecipient(c?.email ?? "");
+        })
+        .catch(() => {
+          setContactEmail(null);
+          setRecipient("");
+        });
     }
 
     // Default CC emails from contract
@@ -380,6 +388,19 @@ export function EmailTimesheetDialog({
               </div>
             </>
           )}
+
+          <div className="rounded-md border border-border/50 bg-muted/20 p-3 text-xs space-y-0.5">
+            <p className="font-medium">Recipients summary</p>
+            <p>
+              <span className="text-muted-foreground">To:</span>{" "}
+              {recipient.trim() || <span className="text-amber-600 dark:text-amber-400">(blank — add a recipient)</span>}
+            </p>
+            {cc.trim() && (
+              <p>
+                <span className="text-muted-foreground">CC:</span> {cc}
+              </p>
+            )}
+          </div>
 
           {message && (
             <p

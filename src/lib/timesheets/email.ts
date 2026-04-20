@@ -5,6 +5,7 @@ import { sendEmail, type EmailAttachment } from "@/lib/notifications/email";
 import { buildEmailConfig } from "@/lib/notifications/email-config";
 import { getTemplate, renderTemplate } from "@/lib/email-templates";
 import { formatDateNzDash } from "@/lib/utils/format-date-nz";
+import { recordEmail } from "@/lib/email-log";
 import {
   generateTimesheetCsv,
   generateTimesheetXlsx,
@@ -251,13 +252,45 @@ export async function sendTimesheetEmail(
     });
   }
 
-  await sendEmail(
-    emailConfig,
-    subject,
-    body,
-    attachments,
-    mergedCc.length > 0 ? mergedCc : undefined
-  );
+  const provider = emailConfig.provider === "graph" ? "graph" : "smtp";
+  try {
+    await sendEmail(
+      emailConfig,
+      subject,
+      body,
+      attachments,
+      mergedCc.length > 0 ? mergedCc : undefined
+    );
+    recordEmail({
+      businessId: options.businessId,
+      kind: "timesheet",
+      provider,
+      fromAddress: emailConfig.from_address,
+      toAddress: options.recipient.trim(),
+      ccAddresses: mergedCc.length > 0 ? mergedCc : null,
+      subject,
+      attachmentNames: attachments.map((a) => a.filename),
+      success: true,
+      relatedEntityType: "work_contract",
+      relatedEntityId: options.contractId,
+    });
+  } catch (err) {
+    recordEmail({
+      businessId: options.businessId,
+      kind: "timesheet",
+      provider,
+      fromAddress: emailConfig.from_address,
+      toAddress: options.recipient.trim(),
+      ccAddresses: mergedCc.length > 0 ? mergedCc : null,
+      subject,
+      attachmentNames: attachments.map((a) => a.filename),
+      success: false,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      relatedEntityType: "work_contract",
+      relatedEntityId: options.contractId,
+    });
+    throw err;
+  }
 
   return {
     sent: true,

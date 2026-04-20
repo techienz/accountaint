@@ -4,6 +4,7 @@ import { createNotification } from "./in-app";
 import { sendPushToUser } from "./desktop";
 import { sendEmail } from "./email";
 import { buildEmailConfig } from "./email-config";
+import { recordEmail } from "@/lib/email-log";
 import { sendSlack } from "./slack";
 import { generateIcs } from "./ics";
 
@@ -72,7 +73,34 @@ export async function notify(input: NotifyInput) {
             });
           }
 
-          await sendEmail(emailConfig, emailSubject, emailBody, attachments.length > 0 ? attachments : undefined);
+          try {
+            await sendEmail(emailConfig, emailSubject, emailBody, attachments.length > 0 ? attachments : undefined);
+            recordEmail({
+              businessId: input.businessId,
+              kind: "notification",
+              provider: emailConfig.provider === "graph" ? "graph" : "smtp",
+              fromAddress: emailConfig.from_address,
+              toAddress: emailConfig.to_address,
+              subject: emailSubject,
+              attachmentNames: attachments.map((a) => a.filename),
+              success: true,
+              relatedEntityType: input.type ?? null,
+            });
+          } catch (sendErr) {
+            recordEmail({
+              businessId: input.businessId,
+              kind: "notification",
+              provider: emailConfig.provider === "graph" ? "graph" : "smtp",
+              fromAddress: emailConfig.from_address,
+              toAddress: emailConfig.to_address,
+              subject: emailSubject,
+              attachmentNames: attachments.map((a) => a.filename),
+              success: false,
+              errorMessage: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              relatedEntityType: input.type ?? null,
+            });
+            throw sendErr;
+          }
         } catch (err) {
           console.error("Email notification failed:", err instanceof Error ? err.message : err);
         }

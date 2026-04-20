@@ -123,4 +123,10 @@ export async function sendEmailViaGraph(
       `Graph sendMail failed (${response.status}): ${errBody.slice(0, 600)}`
     );
   }
+
+  // Log success so we can audit after the fact. Includes recipient breakdown.
+  const ccList = cc && cc.length > 0 ? ` cc=${cc.join(",")}` : "";
+  console.log(
+    `[graph-email] sent from=${config.from_address} to=${config.to_address}${ccList} subject=${JSON.stringify(subject)} attachments=${attachments?.length ?? 0}`
+  );
 }

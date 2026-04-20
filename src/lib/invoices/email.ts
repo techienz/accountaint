@@ -7,6 +7,7 @@ import { sendEmail } from "@/lib/notifications/email";
 import { buildEmailConfig } from "@/lib/notifications/email-config";
 import { getTemplate, renderTemplate } from "@/lib/email-templates";
 import { formatDateNzDash } from "@/lib/utils/format-date-nz";
+import { recordEmail } from "@/lib/email-log";
 
 export async function sendInvoiceEmail(
   invoiceId: string,
@@ -88,11 +89,44 @@ export async function sendInvoiceEmail(
       ? contact.cc_emails.split(",").map((e: string) => e.trim()).filter(Boolean)
       : undefined;
 
-  await sendEmail(emailConfig, emailSubject, emailBody, [
-    {
-      filename: `${invoice.invoice_number}.pdf`,
-      content: pdfBuffer,
-      contentType: "application/pdf",
-    },
-  ], cc);
+  const attachmentName = `${invoice.invoice_number}.pdf`;
+  const provider = emailConfig.provider === "graph" ? "graph" : "smtp";
+  try {
+    await sendEmail(emailConfig, emailSubject, emailBody, [
+      {
+        filename: attachmentName,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ], cc);
+    recordEmail({
+      businessId,
+      kind: "invoice",
+      provider,
+      fromAddress: emailConfig.from_address,
+      toAddress: recipientEmail,
+      ccAddresses: cc && cc.length > 0 ? cc : null,
+      subject: emailSubject,
+      attachmentNames: [attachmentName],
+      success: true,
+      relatedEntityType: "invoice",
+      relatedEntityId: invoiceId,
+    });
+  } catch (err) {
+    recordEmail({
+      businessId,
+      kind: "invoice",
+      provider,
+      fromAddress: emailConfig.from_address,
+      toAddress: recipientEmail,
+      ccAddresses: cc && cc.length > 0 ? cc : null,
+      subject: emailSubject,
+      attachmentNames: [attachmentName],
+      success: false,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      relatedEntityType: "invoice",
+      relatedEntityId: invoiceId,
+    });
+    throw err;
+  }
 }
