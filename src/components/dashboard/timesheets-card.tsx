@@ -12,10 +12,14 @@ export function TimesheetsCard({
   totalHours,
   billableRatio,
   totalEarnings,
+  uninvoicedEarnings,
+  uninvoicedHours,
 }: {
   totalHours: number;
   billableRatio: number;
   totalEarnings: number;
+  uninvoicedEarnings: number;
+  uninvoicedHours: number;
 }) {
   return (
     <Card>
@@ -40,6 +44,17 @@ export function TimesheetsCard({
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Earnings this week</span>
           <span className="font-medium">${formatNzd(totalEarnings)}</span>
+        </div>
+        <div className="flex items-center justify-between border-t pt-3">
+          <span className="text-sm text-muted-foreground">
+            Uninvoiced
+            {uninvoicedHours > 0 && (
+              <span className="ml-1 text-xs">({uninvoicedHours}h)</span>
+            )}
+          </span>
+          <span className={`font-semibold ${uninvoicedEarnings > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+            ${formatNzd(uninvoicedEarnings)}
+          </span>
         </div>
       </CardContent>
     </Card>

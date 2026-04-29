@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { getDb, schema } from "@/lib/db";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, ne, gte, lte } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 
 type TimesheetEntryInput = {
@@ -331,6 +331,46 @@ export function getTimesheetSummary(
       hours: Math.round(c.hours * 10) / 10,
       earnings: Math.round(c.earnings * 100) / 100,
     })),
+  };
+}
+
+/**
+ * Total billable earnings from timesheet entries that have not yet been put
+ * onto an invoice. Includes both draft and approved entries — anything whose
+ * status is not "invoiced" counts as money still waiting to be billed.
+ */
+export function getUninvoicedEarnings(businessId: string): {
+  totalEarnings: number;
+  totalHours: number;
+  entryCount: number;
+} {
+  const db = getDb();
+  const rows = db
+    .select({
+      duration_minutes: schema.timesheetEntries.duration_minutes,
+      hourly_rate: schema.timesheetEntries.hourly_rate,
+    })
+    .from(schema.timesheetEntries)
+    .where(
+      and(
+        eq(schema.timesheetEntries.business_id, businessId),
+        ne(schema.timesheetEntries.status, "invoiced"),
+        eq(schema.timesheetEntries.billable, true)
+      )
+    )
+    .all();
+
+  let totalMinutes = 0;
+  let totalEarnings = 0;
+  for (const r of rows) {
+    totalMinutes += r.duration_minutes;
+    totalEarnings += (r.hourly_rate ?? 0) * (r.duration_minutes / 60);
+  }
+
+  return {
+    totalEarnings: Math.round(totalEarnings * 100) / 100,
+    totalHours: Math.round((totalMinutes / 60) * 10) / 10,
+    entryCount: rows.length,
   };
 }
 

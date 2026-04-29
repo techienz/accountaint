@@ -9,7 +9,7 @@ import { GstCard } from "@/components/dashboard/gst-card";
 import { DeadlinesCard } from "@/components/dashboard/deadlines-card";
 import { AlertsCard } from "@/components/dashboard/alerts-card";
 import { SyncStatus } from "@/components/dashboard/sync-status";
-import { ApArCard } from "@/components/dashboard/ap-ar-card";
+import { MoneyWaitingCard } from "@/components/dashboard/money-waiting-card";
 import { CrosscheckCard } from "@/components/dashboard/crosscheck-card";
 import { TaxSavingsCard } from "@/components/dashboard/tax-savings-card";
 import { BalanceCard } from "@/components/shareholders/balance-card";
@@ -28,7 +28,7 @@ import { getExpenseSummary } from "@/lib/expenses";
 import { ExpenseCard } from "@/components/dashboard/expense-card";
 import { getWorkContractSummary } from "@/lib/work-contracts";
 import { WorkContractsCard } from "@/components/dashboard/work-contracts-card";
-import { getTimesheetSummary } from "@/lib/timesheets";
+import { getTimesheetSummary, getUninvoicedEarnings } from "@/lib/timesheets";
 import { TimesheetsCard } from "@/components/dashboard/timesheets-card";
 import { getInvoiceSummary } from "@/lib/invoices";
 import { InvoicesCard } from "@/components/dashboard/invoices-card";
@@ -310,6 +310,19 @@ export default async function DashboardPage() {
     .length;
   const hasInvoiceData = localInvoices.length > 0;
 
+  // Oldest unpaid receivable — for "Money Waiting" card
+  const unpaidReceivables = localInvoices.filter(
+    (inv) => inv.type === "ACCREC" && inv.amount_due > 0
+  );
+  let oldestUnpaidDays: number | null = null;
+  if (unpaidReceivables.length > 0) {
+    const oldestDate = unpaidReceivables.reduce((oldest, inv) => {
+      return inv.date < oldest ? inv.date : oldest;
+    }, unpaidReceivables[0].date);
+    const diffMs = Date.now() - new Date(oldestDate).getTime();
+    oldestUnpaidDays = Math.max(0, Math.floor(diffMs / 86400000));
+  }
+
   // Calculate upcoming deadlines
   const now = new Date();
   const sixMonthsOut = new Date(now);
@@ -422,6 +435,7 @@ export default async function DashboardPage() {
     formatDateNZ(weekStartDate),
     formatDateNZ(now)
   );
+  const uninvoiced = getUninvoicedEarnings(businessId);
 
   // Get tax savings summary
   let taxSavingsData: { monthlyTarget: number; shortfallOrSurplus: number } | null = null;
@@ -496,7 +510,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Quick links */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-2 sm:gap-3">
         {[
           { href: "/timesheets", label: "Timesheets", icon: "⏱" },
           { href: "/invoices", label: "Invoices", icon: "📄" },
@@ -507,7 +521,7 @@ export default async function DashboardPage() {
           <a
             key={link.href}
             href={link.href}
-            className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2.5 text-sm font-medium text-card-foreground hover:bg-accent transition-colors"
+            className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 sm:px-4 sm:py-2.5 text-sm font-medium text-card-foreground hover:bg-accent transition-colors"
           >
             <span>{link.icon}</span>
             {link.label}
@@ -523,14 +537,20 @@ export default async function DashboardPage() {
 
       {/* Primary metrics — hero cards with gradient backgrounds */}
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-        <div className="card-hero-revenue rounded-xl">
-          <ProfitLossCard revenue={plRevenue} expenses={plExpenses} netProfit={plNetProfit} hasData={plHasData} />
-        </div>
         <div className="card-hero-cash rounded-xl">
           <CashPositionCard accounts={bankAccountInfos} />
         </div>
         <div className="card-hero-apar rounded-xl">
-          <ApArCard totalReceivable={totalReceivable} totalPayable={totalPayable} overdueCount={overdueCount} hasData={hasInvoiceData} />
+          <MoneyWaitingCard
+            uninvoicedEarnings={uninvoiced.totalEarnings}
+            uninvoicedHours={uninvoiced.totalHours}
+            invoicedUnpaid={totalReceivable}
+            overdueCount={overdueCount}
+            oldestUnpaidDays={oldestUnpaidDays}
+          />
+        </div>
+        <div className="card-hero-revenue rounded-xl">
+          <ProfitLossCard revenue={plRevenue} expenses={plExpenses} netProfit={plNetProfit} hasData={plHasData} />
         </div>
       </div>
 
@@ -570,6 +590,8 @@ export default async function DashboardPage() {
             totalHours={timesheetSummary.totalHours}
             billableRatio={timesheetSummary.billableRatio}
             totalEarnings={timesheetSummary.totalEarnings}
+            uninvoicedEarnings={uninvoiced.totalEarnings}
+            uninvoicedHours={uninvoiced.totalHours}
           />
           <InvoicesCard
             totalReceivable={invoiceSummary.totalReceivable}
