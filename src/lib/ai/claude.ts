@@ -1,9 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { v4 as uuid } from "uuid";
 import type { MessageParam, ContentBlockParam, Tool } from "@anthropic-ai/sdk/resources/messages";
 import { chatTools, executeTool } from "./tools";
 import { desanitise } from "./sanitise";
 import { retrieveKnowledge } from "@/lib/knowledge/retriever";
 import { searchChatMemory } from "@/lib/ai/memory";
+import { recordChatAction } from "./audit";
 import type { SanitisationMap, StreamEvent } from "./types";
 import { allMcpTools } from "@/mcp/all-tools";
 import { executeToolDirect, type McpToolContext } from "@/mcp/server";
@@ -183,6 +185,10 @@ export function streamChat(options: StreamChatOptions): ReadableStream<Uint8Arra
     return encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
   }
 
+  // Per-stream conversation id — every tool call within this streamChat()
+  // shares it, so /audit/chat can reconstruct what the AI did per question.
+  const conversationId = uuid();
+
   return new ReadableStream({
     async start(controller) {
       try {
@@ -330,9 +336,16 @@ export function streamChat(options: StreamChatOptions): ReadableStream<Uint8Arra
             );
 
             const toolInput = block.input ? JSON.parse(block.input) : {};
-            const result = USE_MCP
-              ? await executeMcpTool(block.name, toolInput, businessId, userId, sanitisationMap)
-              : await executeTool(block.name, toolInput, businessId, userId, sanitisationMap);
+            const result = await recordChatAction({
+              businessId,
+              userId,
+              conversationId,
+              toolName: block.name,
+              args: toolInput,
+              fn: () => USE_MCP
+                ? executeMcpTool(block.name, toolInput, businessId, userId, sanitisationMap)
+                : executeTool(block.name, toolInput, businessId, userId, sanitisationMap),
+            });
 
             toolResults.push({
               type: "tool_result",
