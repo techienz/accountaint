@@ -74,7 +74,10 @@ export default async function AuditPage() {
               </button>
             </form>
             <Link href="/audit/jobs" className="text-muted-foreground hover:text-foreground">
-              View scheduled jobs →
+              Scheduled jobs →
+            </Link>
+            <Link href="/audit/chat" className="text-muted-foreground hover:text-foreground">
+              Chat actions →
             </Link>
           </div>
         </CardContent>
