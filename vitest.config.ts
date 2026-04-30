@@ -12,6 +12,7 @@ export default defineConfig({
     environment: "node",
     globals: false,
     pool: "threads",
+    setupFiles: ["./test/setup.ts"],
     coverage: {
       provider: "v8",
       include: ["src/lib/**/*.ts"],
