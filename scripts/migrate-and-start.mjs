@@ -79,15 +79,37 @@ if (!existsSync(migrationsDir)) {
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const tx = db.transaction(() => {
-      for (const stmt of statements) {
+    // Reconciliation tolerance: swallow "already exists" / "duplicate column"
+    // errors. Older parts of the schema were created via `drizzle-kit push`
+    // (no migration history); when migrations later codify the same shape,
+    // the statements can no-op safely. Genuine new statements still apply.
+    const isAlreadyExistsError = (err) => {
+      const msg = err?.message ?? String(err);
+      return /already exists/i.test(msg) || /duplicate column/i.test(msg);
+    };
+
+    // Per-statement try/catch instead of one transaction so a "already exists"
+    // skip on one statement doesn't roll back legitimate creates next to it.
+    let appliedCount = 0;
+    let skippedCount = 0;
+    for (const stmt of statements) {
+      try {
         db.prepare(stmt).run();
+        appliedCount++;
+      } catch (err) {
+        if (isAlreadyExistsError(err)) {
+          skippedCount++;
+        } else {
+          throw err;
+        }
       }
-      db.prepare(
-        "INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)"
-      ).run(hash, Date.now());
-    });
-    tx();
+    }
+    db.prepare(
+      "INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)"
+    ).run(hash, Date.now());
+    if (skippedCount > 0) {
+      console.log(`[init]   ${appliedCount} applied, ${skippedCount} skipped (already exists)`);
+    }
   }
   console.log(`[init] Migrations complete.`);
 }

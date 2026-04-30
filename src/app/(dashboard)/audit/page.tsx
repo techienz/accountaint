@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { runAllChecks, summarise } from "@/lib/audit/run";
@@ -66,14 +67,16 @@ export default async function AuditPage() {
               Run took {summary.duration_ms}ms · {startedAt.toLocaleString("en-NZ", { timeZone: "Pacific/Auckland" })}
             </div>
           </div>
-          <form action="/audit" className="mt-4">
-            <button
-              type="submit"
-              className="text-sm text-primary hover:underline"
-            >
-              Re-run all checks
-            </button>
-          </form>
+          <div className="mt-4 flex items-center gap-4 text-sm">
+            <form action="/audit">
+              <button type="submit" className="text-primary hover:underline">
+                Re-run all checks
+              </button>
+            </form>
+            <Link href="/audit/jobs" className="text-muted-foreground hover:text-foreground">
+              View scheduled jobs →
+            </Link>
+          </div>
         </CardContent>
       </Card>
 

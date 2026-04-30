@@ -1,5 +1,16 @@
 import cron from "node-cron";
-import { syncAllXeroData, checkDeadlines, checkContractRenewals, checkWorkContractExpiry, checkKnowledgeFreshness, checkOverdueInvoices, checkUpcomingBills, syncAllAkahuData, cleanupChatAttachments } from "./jobs";
+import {
+  syncAllXeroData,
+  checkDeadlines,
+  checkContractRenewals,
+  checkWorkContractExpiry,
+  checkKnowledgeFreshness,
+  checkOverdueInvoices,
+  checkUpcomingBills,
+  syncAllAkahuData,
+  cleanupChatAttachments,
+} from "./jobs";
+import { runJob } from "./run-job";
 
 let started = false;
 
@@ -11,65 +22,54 @@ export function startScheduler() {
 
   // Hourly Xero sync (at minute 0)
   cron.schedule("0 * * * *", async () => {
-    console.log("[scheduler] Running Xero sync...");
-    await syncAllXeroData();
+    await runJob("xero_sync", syncAllXeroData);
   });
 
   // Hourly deadline check (at minute 30)
   cron.schedule("30 * * * *", async () => {
-    console.log("[scheduler] Checking deadlines...");
-    await checkDeadlines();
+    await runJob("deadline_check", checkDeadlines);
   });
 
   // Daily contract renewal check (at 8:00 AM)
   cron.schedule("0 8 * * *", async () => {
-    console.log("[scheduler] Checking contract renewals...");
-    await checkContractRenewals();
+    await runJob("contract_renewal_check", checkContractRenewals);
   });
 
   // Daily work contract expiry check (at 8:15 AM)
   cron.schedule("15 8 * * *", async () => {
-    console.log("[scheduler] Checking work contract expiry...");
-    await checkWorkContractExpiry();
+    await runJob("work_contract_expiry_check", checkWorkContractExpiry);
   });
 
   // Daily overdue invoice check (at 9:00 AM)
   cron.schedule("0 9 * * *", async () => {
-    console.log("[scheduler] Checking for overdue invoices...");
-    await checkOverdueInvoices();
+    await runJob("overdue_invoice_check", checkOverdueInvoices);
   });
 
   // Daily bill reminder check (at 7:00 AM)
   cron.schedule("0 7 * * *", async () => {
-    console.log("[scheduler] Checking upcoming bills...");
-    await checkUpcomingBills();
+    await runJob("upcoming_bills_check", checkUpcomingBills);
   });
 
   // Akahu bank feed sync every 4 hours (at minute 15)
   cron.schedule("15 */4 * * *", async () => {
-    console.log("[scheduler] Running Akahu sync...");
-    await syncAllAkahuData();
+    await runJob("akahu_sync", syncAllAkahuData);
   });
 
   // Weekly knowledge freshness check (Sunday 3am)
   cron.schedule("0 3 * * 0", async () => {
-    console.log("[scheduler] Checking knowledge freshness...");
-    await checkKnowledgeFreshness();
+    await runJob("knowledge_freshness_check", checkKnowledgeFreshness);
   });
 
   // Daily chat attachment cleanup (at 3:15 AM)
   cron.schedule("15 3 * * *", async () => {
-    console.log("[scheduler] Cleaning up old chat attachments...");
-    await cleanupChatAttachments();
+    await runJob("chat_attachment_cleanup", cleanupChatAttachments);
   });
 
   // Monthly regulatory check (1st of month at 4:00 AM)
   cron.schedule("0 4 1 * *", async () => {
-    console.log("[scheduler] Running monthly regulatory check...");
-    try {
-      const { runRegulatoryCheck } = await import("@/lib/regulatory/verify");
-      const runId = await runRegulatoryCheck();
-      const { getLatestCheckRun } = await import("@/lib/regulatory/verify");
+    await runJob("regulatory_check", async () => {
+      const { runRegulatoryCheck, getLatestCheckRun } = await import("@/lib/regulatory/verify");
+      await runRegulatoryCheck();
       const run = getLatestCheckRun();
       if (run && (run.areas_changed > 0 || run.areas_uncertain > 0)) {
         const { notify } = await import("@/lib/notifications");
@@ -89,15 +89,12 @@ export function startScheduler() {
         }
       }
       console.log(`[scheduler] Regulatory check complete: ${run?.areas_checked} checked, ${run?.areas_changed} changed`);
-    } catch (err) {
-      console.error("[scheduler] Regulatory check failed:", err);
-    }
+    });
   });
 
   // Monthly tax optimisation scan (1st of month at 5:00 AM)
   cron.schedule("0 5 1 * *", async () => {
-    console.log("[scheduler] Running monthly tax optimisation scan...");
-    try {
+    await runJob("tax_optimisation_scan", async () => {
       const { runTaxOptimisationAnalysis } = await import("@/lib/tax/optimisation/analyse");
       const { getDb, schema: s } = await import("@/lib/db");
       const db = getDb();
@@ -110,14 +107,12 @@ export function startScheduler() {
           console.error(`[scheduler] Tax optimisation failed for ${biz.id}:`, err);
         }
       }
-    } catch (err) {
-      console.error("[scheduler] Tax optimisation scan failed:", err);
-    }
+    });
   });
 
   // Weekly tax optimisation scan near balance date (every Monday at 5:30 AM, only runs if within 60 days of balance date)
   cron.schedule("30 5 * * 1", async () => {
-    try {
+    await runJob("pre_balance_tax_optimisation", async () => {
       const { getDb, schema: s } = await import("@/lib/db");
       const { getNzTaxYear } = await import("@/lib/tax/rules");
       const db = getDb();
@@ -139,9 +134,7 @@ export function startScheduler() {
           }
         }
       }
-    } catch (err) {
-      console.error("[scheduler] Weekly tax optimisation check failed:", err);
-    }
+    });
   });
 
   console.log("[scheduler] Scheduler started");

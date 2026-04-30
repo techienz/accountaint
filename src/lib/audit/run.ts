@@ -6,6 +6,7 @@ import { orphanTimesheetCheck, orphanInvoiceLineCheck } from "./checks/orphans";
 import { akahuSyncFreshnessCheck } from "./checks/sync";
 import { knowledgeIndexCheck } from "./checks/knowledge";
 import { emailSuccessRateCheck } from "./checks/email";
+import { schedulerHeartbeatCheck } from "./checks/scheduler";
 
 export const ALL_CHECKS: Check[] = [
   trialBalanceCheck,
@@ -15,6 +16,7 @@ export const ALL_CHECKS: Check[] = [
   orphanTimesheetCheck,
   orphanInvoiceLineCheck,
   akahuSyncFreshnessCheck,
+  schedulerHeartbeatCheck,
   knowledgeIndexCheck,
   emailSuccessRateCheck,
 ];

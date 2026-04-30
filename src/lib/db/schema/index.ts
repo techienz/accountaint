@@ -66,3 +66,4 @@ export { integrationConfig } from "./integration-config";
 export { dividendDeclarations } from "./dividends";
 export { emailTemplates } from "./email-templates";
 export { emailLog } from "./email-log";
+export { jobRuns } from "./job-runs";
