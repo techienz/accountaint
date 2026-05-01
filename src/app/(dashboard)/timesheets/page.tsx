@@ -66,6 +66,8 @@ export default function TimesheetsPage() {
   >([]);
   const [invoicing, setInvoicing] = useState(false);
   const [includeDescriptions, setIncludeDescriptions] = useState(false);
+  const [invoiceDateFrom, setInvoiceDateFrom] = useState<string>("");
+  const [invoiceDateTo, setInvoiceDateTo] = useState<string>("");
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
 
   const weekEnd = new Date(weekStart);
@@ -157,14 +159,21 @@ export default function TimesheetsPage() {
 
   async function handleCreateInvoice(contractId: string) {
     setInvoicing(true);
+    const req: Record<string, unknown> = {
+      work_contract_id: contractId,
+      include_descriptions: includeDescriptions,
+    };
+    if (invoiceDateFrom) req.date_from = invoiceDateFrom;
+    if (invoiceDateTo) req.date_to = invoiceDateTo;
     const res = await fetch("/api/invoices/from-timesheets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requests: [{ work_contract_id: contractId, include_descriptions: includeDescriptions }],
-      }),
+      body: JSON.stringify({ requests: [req] }),
     });
-    if (res.ok) {
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body?.error ?? "Failed to create invoice");
+    } else {
       loadWeek();
     }
     setInvoicing(false);
@@ -330,8 +339,8 @@ export default function TimesheetsPage() {
 
       {approvedByContract.length > 0 && (
         <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between mb-2">
+          <CardContent className="pt-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium">Ready to invoice</p>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <input
@@ -343,6 +352,37 @@ export default function TimesheetsPage() {
                 Include timesheet descriptions
               </label>
             </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Limit to dates:</span>
+              <Input
+                type="date"
+                value={invoiceDateFrom}
+                onChange={(e) => setInvoiceDateFrom(e.target.value)}
+                className="h-8 w-[140px] text-xs"
+              />
+              <span className="text-muted-foreground">to</span>
+              <Input
+                type="date"
+                value={invoiceDateTo}
+                onChange={(e) => setInvoiceDateTo(e.target.value)}
+                className="h-8 w-[140px] text-xs"
+              />
+              {(invoiceDateFrom || invoiceDateTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => { setInvoiceDateFrom(""); setInvoiceDateTo(""); }}
+                >
+                  Clear
+                </Button>
+              )}
+              <span className="text-muted-foreground">
+                {invoiceDateFrom || invoiceDateTo
+                  ? "(approved entries within range only)"
+                  : "(all approved entries)"}
+              </span>
+            </div>
             <div className="flex flex-wrap gap-2">
               {approvedByContract.map((item) => (
                 <Button
@@ -352,7 +392,10 @@ export default function TimesheetsPage() {
                   disabled={invoicing}
                   onClick={() => handleCreateInvoice(item.contractId)}
                 >
-                  Invoice {item.clientName} ({item.count} entries)
+                  Invoice {item.clientName}
+                  {invoiceDateFrom || invoiceDateTo
+                    ? ""
+                    : ` (${item.count} entries)`}
                 </Button>
               ))}
             </div>
