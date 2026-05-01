@@ -826,18 +826,18 @@ export const chatTools: Tool[] = [
   },
   {
     name: "delete_timesheet_entries",
-    description: "Delete one or more timesheet entries. TWO-STEP: first call WITHOUT confirm to get a preview (which entries will be deleted, dates, hours, dollars). Show the preview to the user verbatim. Only call again with confirm=true after explicit approval. If an entry is already invoiced, it's unlinked from the invoice first.",
+    description: "Delete one or more timesheet entries. TWO-STEP with server-issued preview token: (1) first call WITHOUT preview_token returns a preview AND a preview_token; (2) show the preview to the user verbatim and only after explicit approval, call AGAIN with the SAME entry_ids plus preview_token to execute. Token is single-use and expires after 5 minutes. If entry_ids change between calls, the token is rejected.",
     input_schema: {
       type: "object" as const,
       properties: {
         entry_ids: {
           type: "array",
           items: { type: "string" },
-          description: "Array of timesheet entry IDs to delete. Required — never defaults to 'all'.",
+          description: "Array of timesheet entry IDs to delete. Must be identical between preview and execute calls.",
         },
-        confirm: {
-          type: "boolean",
-          description: "Set to true ONLY after showing the preview to the user and getting explicit approval. First call: omit or false → preview returned. Second call after user yes: true → entries deleted.",
+        preview_token: {
+          type: "string",
+          description: "Server-issued token from a prior preview call. Omit on first call to get a preview. Include on second call to execute.",
         },
       },
       required: ["entry_ids"],
@@ -955,25 +955,25 @@ export const chatTools: Tool[] = [
   {
     name: "declare_dividend",
     description:
-      "Declare a dividend to shareholders. TWO-STEP: first call WITHOUT confirm to get a preview (per-shareholder amount split, journal effect). Show the preview to the user verbatim. Only call again with confirm=true after the user explicitly says yes. Generates a board resolution PDF (NZ Companies Act 1993 s107), records shareholder transactions, posts journals.",
+      "Declare a dividend to shareholders. TWO-STEP with server-issued preview token: (1) first call WITHOUT preview_token returns a preview (per-shareholder split + journal effect) AND a preview_token; (2) show the preview to the user verbatim and only after explicit approval, call AGAIN with the SAME total_amount/date/notes plus preview_token to execute. Token is single-use, expires after 5 minutes, and is invalidated if any args change. Generates a board resolution PDF (NZ Companies Act 1993 s107), records shareholder transactions, posts journals.",
     input_schema: {
       type: "object" as const,
       properties: {
         total_amount: {
           type: "number",
-          description: "Total gross dividend amount ($)",
+          description: "Total gross dividend amount ($). Must be identical between preview and execute calls.",
         },
         date: {
           type: "string",
-          description: "Dividend date YYYY-MM-DD (defaults to today)",
+          description: "Dividend date YYYY-MM-DD (defaults to today). Must be identical between preview and execute calls.",
         },
         notes: {
           type: "string",
-          description: "Optional notes for the board resolution",
+          description: "Optional notes for the board resolution. Must be identical between preview and execute calls.",
         },
-        confirm: {
-          type: "boolean",
-          description: "Set to true ONLY after showing the preview to the user and getting explicit confirmation. First call: omit or false → preview returned. Second call after user yes: true → action executed.",
+        preview_token: {
+          type: "string",
+          description: "Server-issued token from a prior preview call. Omit on first call to get a preview. Include on second call to execute.",
         },
       },
       required: ["total_amount"],
@@ -1940,10 +1940,11 @@ export async function executeTool(
       if (!entryIds || entryIds.length === 0) {
         return { error: "entry_ids is required — specify which entries to delete" };
       }
-      const confirm = toolInput.confirm === true;
+      const previewToken = toolInput.preview_token as string | undefined;
+      const args = { entry_ids: [...entryIds].sort() };
 
       // STEP 1: preview
-      if (!confirm) {
+      if (!previewToken) {
         const db = getDb();
         const preview = entryIds.map((id) => {
           const entry = db
@@ -1965,6 +1966,8 @@ export async function executeTool(
         });
         const totalHours = preview.reduce((s, e) => s + ((e as { hours?: number }).hours ?? 0), 0);
         const totalDollars = preview.reduce((s, e) => s + ((e as { dollars?: number }).dollars ?? 0), 0);
+        const { issuePreviewToken: issueDelToken } = await import("./preview-token");
+        const token = issueDelToken({ businessId, userId, toolName: "delete_timesheet_entries", args });
         return {
           preview: true,
           action: "Delete timesheet entries",
@@ -1972,11 +1975,20 @@ export async function executeTool(
           total_count: preview.length,
           total_hours: Math.round(totalHours * 100) / 100,
           total_dollars: Math.round(totalDollars * 100) / 100,
-          message: "PREVIEW. Show this list to the user verbatim. Only call delete_timesheet_entries again with confirm=true once they explicitly approve.",
+          preview_token: token,
+          message: "PREVIEW. Show this list to the user verbatim. To execute, call delete_timesheet_entries AGAIN with the SAME entry_ids plus preview_token=" + token + ". Token is single-use and expires in 5 minutes.",
         };
       }
 
-      // STEP 2: execute
+      // STEP 2: execute — token must verify
+      const { consumePreviewToken: consumeDelToken } = await import("./preview-token");
+      const consumeDel = consumeDelToken({ token: previewToken, businessId, toolName: "delete_timesheet_entries", args });
+      if (!consumeDel.ok) {
+        return {
+          error: `Preview token rejected: ${consumeDel.reason}. Re-issue a preview by calling delete_timesheet_entries without preview_token.`,
+        };
+      }
+
       const { recordAction: recordActionDel } = await import("@/lib/audit/actions");
       let deleted = 0;
       const notFound: string[] = [];
@@ -2148,10 +2160,11 @@ export async function executeTool(
         return { error: "total_amount must be a positive number" };
       }
       const date = (toolInput.date as string) || todayNZ();
-      const confirm = toolInput.confirm === true;
+      const previewToken = toolInput.preview_token as string | undefined;
+      const args = { total_amount: totalAmount, date, notes: (toolInput.notes as string) || null };
 
-      // STEP 1: preview (no confirm) — returns the per-shareholder split for the user to approve
-      if (!confirm) {
+      // STEP 1: preview (no token supplied) — returns the per-shareholder split + a token
+      if (!previewToken) {
         const db = getDb();
         const shareholders = db
           .select()
@@ -2167,6 +2180,8 @@ export async function executeTool(
           gross_amount: Math.round((totalAmount * s.ownership_percentage / 100) * 100) / 100,
         }));
         const totalCheck = breakdown.reduce((sum, b) => sum + b.gross_amount, 0);
+        const { issuePreviewToken } = await import("./preview-token");
+        const token = issuePreviewToken({ businessId, userId, toolName: "declare_dividend", args });
         return {
           preview: true,
           action: "Declare dividend",
@@ -2174,12 +2189,21 @@ export async function executeTool(
           date,
           breakdown,
           rounded_total: Math.round(totalCheck * 100) / 100,
-          notes: (toolInput.notes as string) || null,
-          message: "PREVIEW. Show this breakdown to the user verbatim. Only call declare_dividend again with confirm=true once they explicitly approve. Otherwise stop here.",
+          notes: args.notes,
+          preview_token: token,
+          message: "PREVIEW. Show this breakdown to the user verbatim. To execute, call declare_dividend AGAIN with the SAME total_amount/date/notes plus preview_token=" + token + ". Token is single-use and expires in 5 minutes. If args change between preview and execute, the token is invalidated.",
         };
       }
 
-      // STEP 2: execute (confirm=true)
+      // STEP 2: execute — token must verify
+      const { consumePreviewToken } = await import("./preview-token");
+      const consume = consumePreviewToken({ token: previewToken, businessId, toolName: "declare_dividend", args });
+      if (!consume.ok) {
+        return {
+          error: `Preview token rejected: ${consume.reason}. Re-issue a preview by calling declare_dividend without preview_token.`,
+        };
+      }
+
       const { declareDividend } = await import("@/lib/dividends");
       const { recordAction } = await import("@/lib/audit/actions");
       try {
