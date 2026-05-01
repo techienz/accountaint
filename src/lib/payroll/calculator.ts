@@ -16,7 +16,9 @@ export type PayCalculationInput = {
 
 export type PayCalculationResult = {
   grossPay: number;
-  paye: number;
+  paye: number;                  // COMBINED IRD PAYE = income tax + ACC earner levy (matches payday filing)
+  payeIncomeTax: number;          // income tax portion of paye
+  payeAccLevy: number;            // ACC earner levy portion of paye (capped)
   kiwisaverEmployee: number;
   kiwisaverEmployer: number;
   esct: number;
@@ -36,7 +38,12 @@ function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export function calculatePaye(
+/**
+ * Income tax component of PAYE only (does NOT include ACC earner levy).
+ * Used internally; external callers should generally use calculatePaye()
+ * which returns the combined IRD-style figure.
+ */
+export function calculatePayeIncomeTax(
   grossPay: number,
   frequency: PayFrequency,
   taxCode: string,
@@ -72,6 +79,49 @@ export function calculatePaye(
   }
 
   return round(annualTax / factor);
+}
+
+/**
+ * ACC earner levy for one pay period. Capped at the annual liable-earnings
+ * cap (annualised across pay periods). Audit finding #65 (2026-05-01).
+ *
+ * IRD's published PAYE deduction includes ACC earner levy; payday filing
+ * (IR348/EMS) reconciles the COMBINED figure.
+ */
+export function calculatePayeAccLevy(
+  grossPay: number,
+  frequency: PayFrequency,
+  taxYear: number
+): number {
+  if (grossPay <= 0) return 0;
+  const config = getTaxYearConfig(taxYear);
+  const factor = config.payPeriodFactors[frequency];
+
+  // Annualise this period's gross. If the implied annual exceeds the cap, the
+  // cap-divided-by-factor caps the per-period levy. Otherwise full rate.
+  const annualised = grossPay * factor;
+  const liableForPeriod = annualised > config.accEarnerLevyCap
+    ? config.accEarnerLevyCap / factor
+    : grossPay;
+
+  // Rate is per $100 of liable earnings (e.g. 1.67 = $1.67 per $100)
+  return round((liableForPeriod / 100) * config.accEarnerLevyRate);
+}
+
+/**
+ * COMBINED IRD PAYE figure: income tax + ACC earner levy. Matches the
+ * deduction shown in IRD's PAYE calculator and what employers report on
+ * payday filing (IR348). Audit finding #65 (2026-05-01).
+ */
+export function calculatePaye(
+  grossPay: number,
+  frequency: PayFrequency,
+  taxCode: string,
+  taxYear: number
+): number {
+  const incomeTax = calculatePayeIncomeTax(grossPay, frequency, taxCode, taxYear);
+  const accLevy = calculatePayeAccLevy(grossPay, frequency, taxYear);
+  return round(incomeTax + accLevy);
 }
 
 export function calculateStudentLoan(
@@ -133,7 +183,9 @@ export function calculateEsct(
 export function calculatePayRun(input: PayCalculationInput): PayCalculationResult {
   const { grossPay, frequency, taxCode, taxYear } = input;
 
-  const paye = calculatePaye(grossPay, frequency, taxCode, taxYear);
+  const payeIncomeTax = calculatePayeIncomeTax(grossPay, frequency, taxCode, taxYear);
+  const payeAccLevy = calculatePayeAccLevy(grossPay, frequency, taxYear);
+  const paye = round(payeIncomeTax + payeAccLevy);
 
   const ks = calculateKiwisaver(
     grossPay,
@@ -151,6 +203,8 @@ export function calculatePayRun(input: PayCalculationInput): PayCalculationResul
   return {
     grossPay: round(grossPay),
     paye,
+    payeIncomeTax,
+    payeAccLevy,
     kiwisaverEmployee: ks.employee,
     kiwisaverEmployer: ks.employer,
     esct,

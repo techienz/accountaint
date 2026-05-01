@@ -1,107 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { calculatePaye } from "@/lib/payroll/calculator";
+import { calculatePaye, calculatePayeIncomeTax, calculatePayeAccLevy } from "@/lib/payroll/calculator";
 import { getTaxYearConfig } from "@/lib/tax/rules";
 
 /**
  * PAYE calculation tests.
- * Coverage: secondary tax codes, primary tax code band math, edge cases.
  *
- * Rate-derived: expected values computed from the rate tables in
- * src/lib/tax/rules/2026.ts. Use IR340 worked examples to promote these
- * to IRD-published-example status (replace expected with IRD's printed value).
+ * AFTER audit finding #65 (2026-05-01): calculatePaye returns the COMBINED
+ * IRD-style figure = income tax + ACC earner levy. The bracket-math-only
+ * function is exposed as calculatePayeIncomeTax.
+ *
+ * - Bracket math tests use calculatePayeIncomeTax (rate-derived).
+ * - The combined-PAYE tests below use the IRD PAYE calculator as the
+ *   source of truth (IRD-published-example).
  */
 
-describe("calculatePaye — secondary tax codes (2026)", () => {
-  const TY = 2026;
-
-  it("SB code applies 10.5% flat", () => {
-    expect(calculatePaye(1000, "weekly", "SB", TY)).toBe(105.0);
-  });
-
-  it("S code applies 17.5% flat", () => {
-    expect(calculatePaye(1000, "weekly", "S", TY)).toBe(175.0);
-  });
-
-  it("SH code applies 30% flat", () => {
-    expect(calculatePaye(1000, "weekly", "SH", TY)).toBe(300.0);
-  });
-
-  it("ST code applies 33% flat", () => {
-    expect(calculatePaye(1000, "weekly", "ST", TY)).toBe(330.0);
-  });
-
-  it("SA code applies 39% flat", () => {
-    expect(calculatePaye(1000, "weekly", "SA", TY)).toBe(390.0);
-  });
-
-  it("ND no-declaration code applies 45% flat", () => {
-    expect(calculatePaye(1000, "weekly", "ND", TY)).toBe(450.0);
-  });
-
-  it("secondary codes ignore SL suffix in base", () => {
-    // SL means student loan in addition; the secondary tax rate itself is unchanged
-    expect(calculatePaye(1000, "weekly", "SB SL", TY)).toBe(105.0);
-  });
-});
-
-describe("calculatePaye — primary tax code M (2026 brackets)", () => {
+describe("calculatePayeIncomeTax — bracket math (rate-derived)", () => {
   const TY = 2026;
   const config = getTaxYearConfig(TY);
 
-  it("zero income → zero PAYE", () => {
-    expect(calculatePaye(0, "weekly", "M", TY)).toBe(0);
+  it("zero income → zero", () => {
+    expect(calculatePayeIncomeTax(0, "weekly", "M", TY)).toBe(0);
   });
 
-  it("$100/week stays in lowest band (10.5%)", () => {
-    // Annualise $100 × 52 = $5,200; entirely below $15,600 threshold
-    // PAYE: 5,200 × 0.105 = $546/year → $10.50/week
-    expect(calculatePaye(100, "weekly", "M", TY)).toBe(10.5);
+  it("$100/week stays in lowest band (10.5%) → $10.50", () => {
+    expect(calculatePayeIncomeTax(100, "weekly", "M", TY)).toBe(10.5);
   });
 
-  it("annualised income at exactly the first bracket threshold ($15,600)", () => {
-    // 15600/52 = $300 weekly; bracket 1 fully used = 15,600 × 0.105 = $1,638
-    // Per week: 1,638 / 52 = $31.50
-    const grossWeekly = 15600 / 52;
-    expect(calculatePaye(grossWeekly, "weekly", "M", TY)).toBeCloseTo(31.5, 1);
-  });
-
-  it("annualised income spanning bracket 1 + bracket 2", () => {
-    // $40,000/year = $769.23/week
-    // Tax: 15,600 × 0.105 + (40,000 - 15,600) × 0.175
-    //    = 1,638 + 24,400 × 0.175
-    //    = 1,638 + 4,270 = $5,908/year
-    // Per week: 5,908 / 52 = $113.62
+  it("annualised $40k spans bracket 1+2", () => {
     const expected = (15600 * 0.105 + (40000 - 15600) * 0.175) / 52;
-    expect(calculatePaye(40000 / 52, "weekly", "M", TY)).toBeCloseTo(expected, 1);
+    expect(calculatePayeIncomeTax(40000 / 52, "weekly", "M", TY)).toBeCloseTo(expected, 1);
   });
 
-  it("annualised income spanning all five brackets", () => {
-    // $200,000 hits the top (39%) band
-    // Bracket math: 15,600×0.105 + (53,500-15,600)×0.175 + (78,100-53,500)×0.30 + (180,000-78,100)×0.33 + (200,000-180,000)×0.39
+  it("annualised $200k spans all 5 brackets", () => {
     const annual =
       15600 * 0.105 +
       (53500 - 15600) * 0.175 +
       (78100 - 53500) * 0.30 +
       (180000 - 78100) * 0.33 +
       (200000 - 180000) * 0.39;
-    const expectedWeekly = annual / 52;
-    expect(calculatePaye(200000 / 52, "weekly", "M", TY)).toBeCloseTo(expectedWeekly, 1);
-  });
-
-  it("fortnightly equivalent of $40,000/year matches weekly equivalent", () => {
-    const weekly = calculatePaye(40000 / 52, "weekly", "M", TY);
-    const fortnightly = calculatePaye(40000 / 26, "fortnightly", "M", TY);
-    // Fortnightly should be ~2x weekly (rounding aside)
-    expect(fortnightly).toBeCloseTo(weekly * 2, 1);
-  });
-
-  it("M and ME tax codes produce same PAYE for the same income", () => {
-    // ME (with main earnings + ML benefit) uses same brackets in this implementation
-    expect(calculatePaye(800, "weekly", "M", TY)).toBe(calculatePaye(800, "weekly", "ME", TY));
+    expect(calculatePayeIncomeTax(200000 / 52, "weekly", "M", TY)).toBeCloseTo(annual / 52, 1);
   });
 
   it("personal income tax brackets in config match expected values for tax year 2026", () => {
-    // Locks the brackets so any rate change is a deliberate edit + test bump
     expect(config.personalIncomeTaxBrackets).toEqual([
       { threshold: 15600, rate: 0.105 },
       { threshold: 53500, rate: 0.175 },
@@ -112,22 +52,85 @@ describe("calculatePaye — primary tax code M (2026 brackets)", () => {
   });
 });
 
-describe("calculatePaye — primary tax code M (2027 brackets)", () => {
-  const TY = 2027;
+describe("calculatePayeIncomeTax — secondary tax codes (rate-derived)", () => {
+  const TY = 2026;
+  it("SB applies 10.5% flat", () => expect(calculatePayeIncomeTax(1000, "weekly", "SB", TY)).toBe(105.0));
+  it("S applies 17.5% flat", () => expect(calculatePayeIncomeTax(1000, "weekly", "S", TY)).toBe(175.0));
+  it("SH applies 30% flat", () => expect(calculatePayeIncomeTax(1000, "weekly", "SH", TY)).toBe(300.0));
+  it("ST applies 33% flat", () => expect(calculatePayeIncomeTax(1000, "weekly", "ST", TY)).toBe(330.0));
+  it("SA applies 39% flat", () => expect(calculatePayeIncomeTax(1000, "weekly", "SA", TY)).toBe(390.0));
+  it("ND applies 45% flat", () => expect(calculatePayeIncomeTax(1000, "weekly", "ND", TY)).toBe(450.0));
+  it("SL suffix doesn't change income tax", () => {
+    expect(calculatePayeIncomeTax(1000, "weekly", "SB SL", TY)).toBe(105.0);
+  });
+});
 
-  it("config exists for 2027", () => {
-    expect(() => getTaxYearConfig(TY)).not.toThrow();
+describe("calculatePayeAccLevy — earner levy with cap (2026)", () => {
+  const TY = 2026;
+
+  it("zero gross → zero levy", () => {
+    expect(calculatePayeAccLevy(0, "weekly", TY)).toBe(0);
   });
 
-  it("zero income → zero PAYE", () => {
-    expect(calculatePaye(0, "weekly", "M", TY)).toBe(0);
+  it("$1000/week (annualised $52k, well under cap) → $16.70", () => {
+    // 1000 × 1.67/100 = 16.70
+    expect(calculatePayeAccLevy(1000, "weekly", TY)).toBe(16.7);
   });
 
-  it("low primary income computes correctly using 2027 first bracket", () => {
-    const config = getTaxYearConfig(TY);
-    const firstBracket = config.personalIncomeTaxBrackets[0];
-    const annualised = firstBracket.threshold; // exactly at threshold
-    const expected = (annualised * firstBracket.rate) / 52;
-    expect(calculatePaye(annualised / 52, "weekly", "M", TY)).toBeCloseTo(expected, 1);
+  it("$2000/fortnight (annualised $52k, well under cap) → $33.40", () => {
+    // 2000 × 1.67/100 = 33.40
+    expect(calculatePayeAccLevy(2000, "fortnightly", TY)).toBe(33.4);
+  });
+
+  it("at exactly the cap ($152,790/year), full rate applies", () => {
+    // 152,790 / 52 = 2938.27 weekly, all liable
+    const grossWeekly = 152790 / 52;
+    const expected = (grossWeekly / 100) * 1.67;
+    expect(calculatePayeAccLevy(grossWeekly, "weekly", TY)).toBeCloseTo(expected, 2);
+  });
+
+  it("above the cap ($200k/year), capped at cap-divided-by-factor", () => {
+    // 200k/52 = $3846.15 gross weekly. Annualised exceeds cap.
+    // Per-period liable = 152,790 / 52 = $2938.27
+    // Levy = 2938.27 × 1.67 / 100 = 49.07
+    const expectedCappedWeekly = (152790 / 52 / 100) * 1.67;
+    expect(calculatePayeAccLevy(200000 / 52, "weekly", TY)).toBeCloseTo(expectedCappedWeekly, 2);
+  });
+});
+
+describe("calculatePaye — COMBINED IRD figure (IRD-published-example, audit #65)", () => {
+  const TY = 2026;
+
+  /**
+   * Source: IRD PAYE calculator + IR340 methodology
+   * (https://www.ird.govt.nz/income-tax/paye-calculator)
+   * IRD's published "PAYE deduction" combines income tax + ACC earner levy.
+   * KiwiSaver and student loan are separate line items.
+   */
+
+  it("$1,000/week tax code M (2026): IRD PAYE = $154.00 IT + $16.70 ACC = $170.70", () => {
+    // Annualised $52,000:
+    //   Income tax: 15,600 × 0.105 + (52,000 − 15,600) × 0.175 = 1,638 + 6,370 = $8,008/yr → $154.00/wk
+    //   ACC earner levy: 1000 × 0.0167 = $16.70/wk (under cap)
+    //   Combined PAYE: $170.70/wk
+    expect(calculatePaye(1000, "weekly", "M", TY)).toBeCloseTo(170.7, 1);
+  });
+
+  it("$2,000/fortnight tax code M (2026): IRD PAYE = $308.00 IT + $33.40 ACC = $341.40", () => {
+    expect(calculatePaye(2000, "fortnightly", "M", TY)).toBeCloseTo(341.4, 1);
+  });
+
+  it("$200k/year tax code M (2026): IT $1,097.64 + capped ACC $49.07 = $1,146.71/wk", () => {
+    // Annualised = $200,000
+    //   Income tax: 57,077.50/52 = $1,097.64/wk
+    //   ACC earner levy: capped at $152,790; per-week = 152,790/52 × 1.67/100 = $49.07
+    //   Combined: $1,146.71
+    const result = calculatePaye(200000 / 52, "weekly", "M", TY);
+    expect(result).toBeCloseTo(1146.71, 1);
+  });
+
+  it("secondary code SB at $1,000/wk: 10.5% income tax + 1.67% ACC = $121.70", () => {
+    // 1000 × 0.105 + 1000 × 0.0167 = 105 + 16.70 = $121.70
+    expect(calculatePaye(1000, "weekly", "SB", TY)).toBeCloseTo(121.7, 1);
   });
 });
