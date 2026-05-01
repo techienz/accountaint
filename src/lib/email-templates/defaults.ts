@@ -3,7 +3,7 @@
 // Placeholders use {{variable}} syntax. Available variables are documented
 // per kind and shown to the user in the Settings → Email Templates UI.
 
-export type TemplateKind = "invoice" | "timesheet" | "payslip";
+export type TemplateKind = "invoice" | "invoice_reminder" | "timesheet" | "payslip";
 
 export type TemplateDefault = {
   label: string;
@@ -51,6 +51,45 @@ export const TEMPLATE_DEFAULTS: Record<TemplateKind, TemplateDefault> = {
       amount_due: "$2,415.00",
       due_date: "20-05-2026",
       total_amount: "$2,415.00",
+      payment_instructions:
+        "<p><strong>Payment details:</strong><br>Bank: 12-3456-7890123-00<br>Reference: INV-0042</p>",
+    },
+  },
+  invoice_reminder: {
+    label: "Invoice reminder",
+    description:
+      "Sent when chasing payment on an unpaid or overdue invoice. Triggered manually from the invoice detail page or automatically from the daily overdue check.",
+    subject: "Reminder: invoice {{invoice_number}} is unpaid",
+    body: `<p>Hi {{contact_name}},</p>
+<p>This is a friendly reminder that invoice {{invoice_number}} for {{amount_due}} {{overdue_phrase}}.</p>
+<p>I&rsquo;ve attached a copy for your reference.</p>
+{{payment_instructions}}
+<p>If you&rsquo;ve already paid, please ignore this — it can take a couple of days for the payment to land.</p>
+<p>Thanks,<br>
+{{business_name}}</p>`,
+    placeholders: [
+      { key: "business_name", description: "Your business name" },
+      { key: "contact_name", description: "Recipient's name" },
+      { key: "invoice_number", description: "e.g. INV-0042" },
+      { key: "amount_due", description: "Outstanding amount, formatted $" },
+      { key: "due_date", description: "Original due date, DD-MM-YYYY" },
+      {
+        key: "overdue_phrase",
+        description:
+          "'is now N days overdue (was due DD-MM-YYYY)' or 'is due on DD-MM-YYYY' depending on whether the due date has passed",
+      },
+      {
+        key: "payment_instructions",
+        description: "Saved payment instructions wrapped in a paragraph. Blank if none set.",
+      },
+    ],
+    sampleData: {
+      business_name: "Acme Contracting Ltd",
+      contact_name: "Jane Smith",
+      invoice_number: "INV-0042",
+      amount_due: "$2,415.00",
+      due_date: "20-04-2026",
+      overdue_phrase: "is now 12 days overdue (was due 20-04-2026)",
       payment_instructions:
         "<p><strong>Payment details:</strong><br>Bank: 12-3456-7890123-00<br>Reference: INV-0042</p>",
     },

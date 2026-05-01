@@ -10,7 +10,7 @@ export const emailLog = sqliteTable("email_log", {
     .notNull()
     .$defaultFn(() => new Date()),
   kind: text("kind", {
-    enum: ["invoice", "timesheet", "payslip", "notification", "other"],
+    enum: ["invoice", "invoice_reminder", "timesheet", "payslip", "notification", "other"],
   }).notNull(),
   provider: text("provider", { enum: ["smtp", "graph", "unknown"] })
     .notNull()

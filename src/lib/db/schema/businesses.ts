@@ -51,6 +51,10 @@ export const businesses = sqliteTable("businesses", {
     .notNull()
     .default(false),
   next_resolution_number: integer("next_resolution_number").notNull().default(1),
+  auto_invoice_reminders: integer("auto_invoice_reminders", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  invoice_reminder_cadence_days: integer("invoice_reminder_cadence_days").notNull().default(7),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

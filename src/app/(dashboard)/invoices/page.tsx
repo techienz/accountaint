@@ -76,7 +76,10 @@ export default function InvoicesPage() {
             Manage sales invoices and bills
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link href="/invoices/recurring">
+            <Button variant="ghost">Recurring</Button>
+          </Link>
           <Link href="/invoices/new?type=ACCPAY">
             <Button variant="outline"><Plus className="mr-2 h-4 w-4" />New Bill</Button>
           </Link>

@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { renderTemplate } from "@/lib/email-templates/render";
 
-type TemplateKind = "invoice" | "timesheet" | "payslip";
+type TemplateKind = "invoice" | "invoice_reminder" | "timesheet" | "payslip";
 
 type Template = {
   kind: TemplateKind;
@@ -33,11 +33,13 @@ export function EmailTemplatesClient({ initial }: { initial: Template[] }) {
   const [templates, setTemplates] = useState(initial);
   const [editing, setEditing] = useState<Record<TemplateKind, { subject: string; body: string } | null>>({
     invoice: null,
+    invoice_reminder: null,
     timesheet: null,
     payslip: null,
   });
   const [preview, setPreview] = useState<Record<TemplateKind, boolean>>({
     invoice: false,
+    invoice_reminder: false,
     timesheet: false,
     payslip: false,
   });

@@ -34,6 +34,8 @@ export const invoices = sqliteTable("invoices", {
   notes: text("notes"),
   payment_instructions: text("payment_instructions"),
   overdue_notified_at: integer("overdue_notified_at", { mode: "timestamp" }),
+  last_reminder_sent_at: integer("last_reminder_sent_at", { mode: "timestamp" }),
+  reminder_count: integer("reminder_count").notNull().default(0),
   created_at: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

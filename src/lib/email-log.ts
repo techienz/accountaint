@@ -4,6 +4,7 @@ import { getDb, schema } from "@/lib/db";
 
 export type EmailLogKind =
   | "invoice"
+  | "invoice_reminder"
   | "timesheet"
   | "payslip"
   | "notification"

@@ -16,7 +16,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, Send, Ban } from "lucide-react";
+import { Download, Ban, Pencil, Plus, Bell } from "lucide-react";
+import { SendInvoiceDialog } from "@/components/invoices/send-invoice-dialog";
+import { LineItemRow } from "@/components/invoices/line-item-row";
+import { InvoiceTotals } from "@/components/invoices/invoice-totals";
 
 type LineItem = {
   id: string;
@@ -47,6 +50,10 @@ type Invoice = {
   payment_instructions: string | null;
   contact_name: string;
   contact_id: string;
+  contact_email: string | null;
+  contact_cc_emails: string | null;
+  last_reminder_sent_at: string | null;
+  reminder_count: number;
   line_items: LineItem[];
 };
 
@@ -76,6 +83,13 @@ export default function InvoiceDetailPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
+  const [reminding, setReminding] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editLines, setEditLines] = useState<{ description: string; quantity: number; unit_price: number; gst_rate: number }[]>([]);
+  const [editGstInclusive, setEditGstInclusive] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   function load() {
     fetch(`/api/invoices/${id}`)
@@ -90,11 +104,6 @@ export default function InvoiceDetailPage() {
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  async function handleSend() {
-    await fetch(`/api/invoices/${id}/send`, { method: "POST" });
-    load();
-  }
 
   async function handleVoid() {
     if (!confirm("Void this invoice? This cannot be undone.")) return;
@@ -135,6 +144,79 @@ export default function InvoiceDetailPage() {
     load();
   }
 
+  async function handleSendReminder() {
+    if (!invoice) return;
+    if (!confirm(`Send a payment reminder for ${invoice.invoice_number} to ${invoice.contact_name}?`)) return;
+    setReminding(true);
+    setReminderMessage(null);
+    try {
+      const res = await fetch(`/api/invoices/${id}/reminder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to send reminder");
+      setReminderMessage({ kind: "success", text: `Reminder sent to ${data.reminded_to}.` });
+      load();
+    } catch (err) {
+      setReminderMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to send reminder" });
+    } finally {
+      setReminding(false);
+    }
+  }
+
+  function startEditingLines() {
+    if (!invoice) return;
+    setEditLines(
+      invoice.line_items.map((li) => ({
+        description: li.description,
+        quantity: li.quantity,
+        unit_price: li.unit_price,
+        gst_rate: li.gst_rate,
+      })),
+    );
+    setEditGstInclusive(invoice.gst_inclusive);
+    setEditError(null);
+    setEditing(true);
+  }
+
+  function cancelEditingLines() {
+    setEditing(false);
+    setEditError(null);
+  }
+
+  async function saveEditedLines() {
+    if (editLines.some((l) => !l.description.trim())) {
+      setEditError("Every line needs a description.");
+      return;
+    }
+    if (editLines.length === 0) {
+      setEditError("At least one line item is required.");
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/invoices/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gst_inclusive: editGstInclusive,
+          line_items: editLines,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save changes");
+      setEditing(false);
+      load();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Failed to save changes");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   if (!invoice) return <div className="p-4">Loading...</div>;
 
   const isInvoice = invoice.type === "ACCREC";
@@ -160,12 +242,28 @@ export default function InvoiceDetailPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
+        {invoice.type === "ACCREC" && invoice.status !== "void" && invoice.status !== "paid" && (
+          <SendInvoiceDialog
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoice_number}
+            contactName={invoice.contact_name}
+            contactEmail={invoice.contact_email}
+            contactCcEmails={invoice.contact_cc_emails}
+            isResend={invoice.status !== "draft"}
+            onSent={load}
+          />
+        )}
+        {invoice.type === "ACCREC" &&
+          (invoice.status === "sent" || invoice.status === "overdue") &&
+          invoice.amount_due > 0 && (
+            <Button variant="outline" onClick={handleSendReminder} disabled={reminding}>
+              <Bell className="mr-2 h-4 w-4" />
+              {reminding ? "Sending..." : invoice.reminder_count > 0 ? `Send reminder (${invoice.reminder_count} sent)` : "Send reminder"}
+            </Button>
+          )}
         {invoice.status === "draft" && (
           <>
-            <Button onClick={handleSend}>
-              <Send className="mr-2 h-4 w-4" />Send
-            </Button>
             <Button variant="outline" onClick={() => router.push(`/invoices/new?edit=${id}`)}>
               Edit
             </Button>
@@ -185,6 +283,13 @@ export default function InvoiceDetailPage() {
           </Button>
         )}
       </div>
+      {reminderMessage && (
+        <p
+          className={`text-sm ${reminderMessage.kind === "success" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+        >
+          {reminderMessage.text}
+        </p>
+      )}
 
       {/* Invoice details */}
       <Card>
@@ -206,57 +311,131 @@ export default function InvoiceDetailPage() {
             )}
           </div>
 
-          {/* Line items */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
-                <TableHead className="text-right">Unit Price</TableHead>
-                <TableHead className="text-right">GST</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoice.line_items.map((li) => (
-                <TableRow key={li.id}>
-                  <TableCell>{li.description}</TableCell>
-                  <TableCell className="text-right">{li.quantity}</TableCell>
-                  <TableCell className="text-right">{fmt(li.unit_price)}</TableCell>
-                  <TableCell className="text-right">{Math.round(li.gst_rate * 100)}%</TableCell>
-                  <TableCell className="text-right">{fmt(li.line_total)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          {/* Line items — read-only or editable */}
+          {!editing ? (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium">Line items</p>
+                {invoice.status === "draft" && (
+                  <Button variant="ghost" size="sm" onClick={startEditingLines}>
+                    <Pencil className="mr-1 h-3.5 w-3.5" />Edit lines
+                  </Button>
+                )}
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">GST</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoice.line_items.map((li) => (
+                    <TableRow key={li.id}>
+                      <TableCell>{li.description}</TableCell>
+                      <TableCell className="text-right">{li.quantity}</TableCell>
+                      <TableCell className="text-right">{fmt(li.unit_price)}</TableCell>
+                      <TableCell className="text-right">{Math.round(li.gst_rate * 100)}%</TableCell>
+                      <TableCell className="text-right">{fmt(li.line_total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
 
-          {/* Totals */}
-          <div className="ml-auto w-64 mt-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{fmt(invoice.subtotal)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">GST</span>
-              <span>{fmt(invoice.gst_total)}</span>
-            </div>
-            <div className="flex justify-between font-bold border-t pt-2">
-              <span>Total</span>
-              <span>{fmt(invoice.total)}</span>
-            </div>
-            {invoice.amount_paid > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Paid</span>
-                <span>{fmt(invoice.amount_paid)}</span>
+              {/* Totals */}
+              <div className="ml-auto w-64 mt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>{fmt(invoice.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">GST</span>
+                  <span>{fmt(invoice.gst_total)}</span>
+                </div>
+                <div className="flex justify-between font-bold border-t pt-2">
+                  <span>Total</span>
+                  <span>{fmt(invoice.total)}</span>
+                </div>
+                {invoice.amount_paid > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Paid</span>
+                    <span>{fmt(invoice.amount_paid)}</span>
+                  </div>
+                )}
+                {invoice.amount_due > 0 && invoice.amount_due !== invoice.total && (
+                  <div className="flex justify-between font-bold text-lg">
+                    <span>Amount Due</span>
+                    <span>{fmt(invoice.amount_due)}</span>
+                  </div>
+                )}
               </div>
-            )}
-            {invoice.amount_due > 0 && invoice.amount_due !== invoice.total && (
-              <div className="flex justify-between font-bold text-lg">
-                <span>Amount Due</span>
-                <span>{fmt(invoice.amount_due)}</span>
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Edit line items</p>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={editGstInclusive}
+                    onChange={(e) => setEditGstInclusive(e.target.checked)}
+                    className="rounded"
+                  />
+                  Prices include GST
+                </label>
               </div>
-            )}
-          </div>
+              <div className="grid grid-cols-12 gap-2 text-xs text-muted-foreground px-1">
+                <div className="col-span-5">Description</div>
+                <div className="col-span-2">Qty</div>
+                <div className="col-span-2">Unit price</div>
+                <div className="col-span-1">GST</div>
+                <div className="col-span-1 text-right">Total</div>
+                <div className="col-span-1" />
+              </div>
+              {editLines.map((line, idx) => (
+                <LineItemRow
+                  key={idx}
+                  item={line}
+                  gstInclusive={editGstInclusive}
+                  onChange={(updated) => {
+                    const copy = editLines.slice();
+                    copy[idx] = updated;
+                    setEditLines(copy);
+                  }}
+                  onRemove={() => setEditLines(editLines.filter((_, i) => i !== idx))}
+                />
+              ))}
+              <div className="flex items-center justify-between">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setEditLines([
+                      ...editLines,
+                      { description: "", quantity: 1, unit_price: 0, gst_rate: 0.15 },
+                    ])
+                  }
+                >
+                  <Plus className="mr-1 h-3.5 w-3.5" />Add line
+                </Button>
+                <InvoiceTotals lineItems={editLines} gstInclusive={editGstInclusive} />
+              </div>
+              {editError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{editError}</p>
+              )}
+              <div className="flex gap-2">
+                <Button onClick={saveEditedLines} disabled={editSaving}>
+                  {editSaving ? "Saving..." : "Save changes"}
+                </Button>
+                <Button variant="outline" onClick={cancelEditingLines} disabled={editSaving}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
 
           {invoice.payment_instructions && (
             <div className="mt-6 p-4 bg-muted rounded-lg">

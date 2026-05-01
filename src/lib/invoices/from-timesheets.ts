@@ -1,5 +1,5 @@
 import { getDb, schema } from "@/lib/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import { findOrCreateContactByName } from "@/lib/contacts";
 import { createInvoice } from "./index";
@@ -10,6 +10,8 @@ type TimesheetInvoiceRequest = {
   gst_rate?: number;
   include_descriptions?: boolean;
   include_invoiced?: boolean; // re-invoice already-invoiced entries
+  date_from?: string; // YYYY-MM-DD inclusive
+  date_to?: string;   // YYYY-MM-DD inclusive
 };
 
 export async function createInvoiceFromTimesheets(
@@ -95,8 +97,21 @@ export async function createInvoiceFromTimesheets(
       entries = entries.filter((e) => idSet.has(e.id));
     }
 
+    // Filter by date range (inclusive). YYYY-MM-DD strings sort lexically.
+    if (req.date_from) {
+      const from = req.date_from;
+      entries = entries.filter((e) => e.date >= from);
+    }
+    if (req.date_to) {
+      const to = req.date_to;
+      entries = entries.filter((e) => e.date <= to);
+    }
+
     if (entries.length === 0) {
-      throw new Error(`No approved timesheet entries for contract: ${clientName}. If entries are already invoiced, ask to regenerate the invoice.`);
+      const range = req.date_from || req.date_to
+        ? ` between ${req.date_from ?? "any"} and ${req.date_to ?? "any"}`
+        : "";
+      throw new Error(`No approved timesheet entries for contract: ${clientName}${range}. If entries are already invoiced, ask to regenerate the invoice.`);
     }
 
     // Calculate total hours
@@ -180,16 +195,20 @@ export async function createInvoiceFromTimesheets(
   // Update timesheet entries with invoice_id
   if (invoice) {
     for (const req of requests) {
-      const conditions = [
-        eq(schema.timesheetEntries.business_id, businessId),
-        eq(schema.timesheetEntries.work_contract_id, req.work_contract_id),
-        eq(schema.timesheetEntries.status, "invoiced"),
-      ];
-
-      // Only update entries that don't already have an invoice_id
+      // Only set invoice_id on entries we just marked invoiced in this run.
+      // Entries from previous invoice runs already have an invoice_id set;
+      // filtering on isNull(invoice_id) prevents this run from clobbering
+      // those references when partial date-range invoicing is used.
       db.update(schema.timesheetEntries)
         .set({ invoice_id: invoice.id })
-        .where(and(...conditions))
+        .where(
+          and(
+            eq(schema.timesheetEntries.business_id, businessId),
+            eq(schema.timesheetEntries.work_contract_id, req.work_contract_id),
+            eq(schema.timesheetEntries.status, "invoiced"),
+            isNull(schema.timesheetEntries.invoice_id),
+          ),
+        )
         .run();
     }
   }

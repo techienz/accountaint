@@ -9,6 +9,7 @@ import {
   checkUpcomingBills,
   syncAllAkahuData,
   cleanupChatAttachments,
+  runRecurringInvoiceSchedules,
 } from "./jobs";
 import { runJob } from "./run-job";
 
@@ -43,6 +44,11 @@ export function startScheduler() {
   // Daily overdue invoice check (at 9:00 AM)
   cron.schedule("0 9 * * *", async () => {
     await runJob("overdue_invoice_check", checkOverdueInvoices);
+  });
+
+  // Daily recurring-invoice generation (at 6:00 AM)
+  cron.schedule("0 6 * * *", async () => {
+    await runJob("recurring_invoice_run", runRecurringInvoiceSchedules);
   });
 
   // Daily bill reminder check (at 7:00 AM)

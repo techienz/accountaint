@@ -70,3 +70,4 @@ export { jobRuns } from "./job-runs";
 export { chatActions } from "./chat-actions";
 export { auditLog } from "./audit-log";
 export { previewTokens } from "./preview-tokens";
+export { recurringInvoiceSchedules, recurringInvoiceLines } from "./recurring-invoices";

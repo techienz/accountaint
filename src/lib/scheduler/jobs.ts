@@ -295,9 +295,43 @@ export async function checkOverdueInvoices() {
           .where(eq(schema.invoices.id, inv.id))
           .run();
       }
+
+      // Auto-reminder leg: email the client (separate from the in-app notify
+      // above which goes to the user). Gated by the per-business toggle and
+      // a configurable cadence so we don't pester clients daily.
+      if (biz.auto_invoice_reminders) {
+        const cadenceDays = biz.invoice_reminder_cadence_days ?? 7;
+        const cadenceCutoff = new Date(Date.now() - cadenceDays * 24 * 60 * 60 * 1000);
+        const { sendInvoiceReminder } = await import("@/lib/invoices/email");
+
+        for (const inv of overdueInvoices) {
+          if (inv.amount_due <= 0) continue;
+          if (inv.last_reminder_sent_at && new Date(inv.last_reminder_sent_at) > cadenceCutoff) continue;
+
+          try {
+            await sendInvoiceReminder(inv.id, biz.id);
+            console.log(`[scheduler] Sent payment reminder for ${inv.invoice_number} (business ${biz.id})`);
+          } catch (err) {
+            // Common: no email configured / no contact email. Don't let one
+            // bad invoice stop the rest. The error is recorded in email_log.
+            console.warn(`[scheduler] Auto-reminder skipped for ${inv.invoice_number}:`, err instanceof Error ? err.message : err);
+          }
+        }
+      }
     } catch (error) {
       console.error(`[scheduler] Overdue invoice check failed for business ${biz.id}:`, error);
     }
+  }
+}
+
+export async function runRecurringInvoiceSchedules() {
+  const { runDueSchedules } = await import("@/lib/invoices/recurring");
+  const result = await runDueSchedules();
+  if (result.generated > 0 || result.errors.length > 0) {
+    console.log(
+      `[scheduler] Recurring invoices: ${result.generated} generated, ${result.autoSent} auto-sent, ${result.skipped} skipped, ${result.errors.length} errors`,
+    );
+    for (const e of result.errors) console.warn(`[scheduler] Recurring: ${e}`);
   }
 }
 

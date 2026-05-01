@@ -7,7 +7,7 @@ export const emailTemplates = sqliteTable("email_templates", {
     .notNull()
     .references(() => businesses.id, { onDelete: "cascade" }),
   kind: text("kind", {
-    enum: ["invoice", "timesheet", "payslip"],
+    enum: ["invoice", "invoice_reminder", "timesheet", "payslip"],
   }).notNull(),
   subject: text("subject").notNull(),
   body: text("body").notNull(),

@@ -23,7 +23,7 @@ export async function POST(
   const businessId = session.activeBusiness.id;
 
   const body = await request.json().catch(() => ({}));
-  const { email, subject, body: emailBody } = body;
+  const { email, subject, body: emailBody, cc_emails } = body;
 
   let invoice = getInvoice(id, businessId);
   if (!invoice) {
@@ -45,24 +45,27 @@ export async function POST(
 
   // Send email (always, including on re-send). Failures don't roll back status.
   const recipient = email || invoice.contact_email;
-  if (recipient) {
-    try {
-      await sendInvoiceEmail(
-        id,
-        businessId,
-        recipient,
-        subject,
-        emailBody
-      );
-    } catch (err) {
-      console.error("Failed to send invoice email:", err);
-      const message = err instanceof Error ? err.message : "Send failed";
-      return NextResponse.json(
-        { ...invoice, email_error: message },
-        { status: 500 }
-      );
-    }
+  if (!recipient) {
+    return NextResponse.json(
+      { ...invoice, email_error: "No recipient email — pass `email` or set one on the contact." },
+      { status: 400 }
+    );
   }
 
-  return NextResponse.json({ ...invoice, emailed_to: recipient ?? null });
+  // cc_emails contract: undefined → fall back to contact's saved CCs;
+  // [] → explicitly no CCs (user cleared them); array → use exactly these.
+  const ccArg = Array.isArray(cc_emails) ? cc_emails : undefined;
+
+  try {
+    await sendInvoiceEmail(id, businessId, recipient, subject, emailBody, ccArg);
+  } catch (err) {
+    console.error("Failed to send invoice email:", err);
+    const message = err instanceof Error ? err.message : "Send failed";
+    return NextResponse.json(
+      { ...invoice, email_error: message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ ...invoice, emailed_to: recipient });
 }

@@ -627,13 +627,25 @@ export const chatTools: Tool[] = [
   {
     name: "create_invoice_from_timesheets",
     description:
-      "Create an invoice from timesheet entries for a work contract. Use include_invoiced=true when the user wants to regenerate or re-create an invoice for already-invoiced entries.",
+      "Create an invoice from approved timesheet entries for a work contract. Pass EITHER the exact work_contract_id (preferred — call get_work_contracts first if unsure) OR client_name as a fallback (case-insensitive substring match). NEVER invent an id like 'contract_xyz_2'. Optional date_from / date_to (YYYY-MM-DD inclusive) restrict to entries in that range. Use include_invoiced=true to regenerate an invoice from entries already marked invoiced.",
     input_schema: {
       type: "object" as const,
       properties: {
         work_contract_id: {
           type: "string",
-          description: "The work contract to invoice hours for",
+          description: "The work contract id to invoice hours for. Must be a real id from get_work_contracts — do not guess. Either this OR client_name must be provided.",
+        },
+        client_name: {
+          type: "string",
+          description: "Fallback: the client name (or substring of it) to invoice. Used only if work_contract_id is omitted or doesn't match. Resolved against active contracts.",
+        },
+        date_from: {
+          type: "string",
+          description: "Optional inclusive start date (YYYY-MM-DD). Only entries with date >= date_from are invoiced.",
+        },
+        date_to: {
+          type: "string",
+          description: "Optional inclusive end date (YYYY-MM-DD). Only entries with date <= date_to are invoiced.",
         },
         gst_rate: {
           type: "number",
@@ -644,7 +656,7 @@ export const chatTools: Tool[] = [
           description: "Set to true to re-invoice already-invoiced entries (for regenerating invoices). This un-invoices them first.",
         },
       },
-      required: ["work_contract_id"],
+      required: [],
     },
   },
   {
@@ -1149,7 +1161,7 @@ export async function executeTool(
       // Merge local invoices in Xero format
       const localInvoices = listInvoices(businessId)
         .map((inv) => {
-          const fullInv = { ...inv, contact_email: null, line_items: [] };
+          const fullInv = { ...inv, contact_email: null, contact_cc_emails: null, line_items: [] };
           return toXeroInvoiceFormat(fullInv);
         })
         .filter((inv): inv is XeroInvoice => inv !== null);
@@ -1755,25 +1767,61 @@ export async function executeTool(
     }
 
     case "create_invoice_from_timesheets": {
-      const contractId = toolInput.work_contract_id as string;
-      if (!contractId) return { error: "work_contract_id is required" };
+      const { resolveContractForInvoice } = await import("@/lib/invoices/resolve-contract");
+      const rawContractId = toolInput.work_contract_id as string | undefined;
+      const clientNameHint = toolInput.client_name as string | undefined;
       const gstRate = (toolInput.gst_rate as number) ?? 0.15;
       const includeInvoiced = (toolInput.include_invoiced as boolean) ?? false;
-      const invoice = await createInvoiceFromTimesheets(businessId, [
-        { work_contract_id: contractId, gst_rate: gstRate, include_invoiced: includeInvoiced },
-      ]);
-      if (!invoice) return { error: "Failed to create invoice. Check that there are approved timesheet entries." };
-      return sanitiseXeroData(
-        {
-          invoice_number: invoice.invoice_number,
-          contact_name: invoice.contact_name,
-          total: invoice.total,
-          amount_due: invoice.amount_due,
-          status: invoice.status,
-          line_items: invoice.line_items.length,
-        },
-        sanitisationMap
-      );
+      const dateFrom = toolInput.date_from as string | undefined;
+      const dateTo = toolInput.date_to as string | undefined;
+
+      const allContracts = listWorkContracts(businessId);
+      const availableForError = allContracts
+        .filter((c) => c.status === "active" || c.status === "expiring_soon")
+        .map((c) => ({ id: c.id, client_name: c.client_name }));
+
+      const resolved = resolveContractForInvoice(rawContractId, clientNameHint, allContracts);
+      if (!resolved.ok) {
+        if (resolved.reason === "ambiguous") {
+          return {
+            error: `Ambiguous client_name "${clientNameHint}" — matches ${resolved.matches.length} contracts. Pass work_contract_id from this list.`,
+            matches: resolved.matches.map((c) => ({ id: c.id, client_name: c.client_name })),
+          };
+        }
+        return {
+          error: rawContractId
+            ? `Work contract not found: "${rawContractId}". This is not a real id. Use one from available_contracts below, or call get_work_contracts.`
+            : "No work_contract_id or matching client_name provided. Pass work_contract_id from available_contracts below.",
+          available_contracts: availableForError,
+        };
+      }
+
+      try {
+        const invoice = await createInvoiceFromTimesheets(businessId, [
+          {
+            work_contract_id: resolved.contract.id,
+            gst_rate: gstRate,
+            include_invoiced: includeInvoiced,
+            date_from: dateFrom,
+            date_to: dateTo,
+          },
+        ]);
+        if (!invoice) return { error: "Failed to create invoice. Check that there are approved timesheet entries." };
+        return sanitiseXeroData(
+          {
+            invoice_number: invoice.invoice_number,
+            contact_name: invoice.contact_name,
+            total: invoice.total,
+            amount_due: invoice.amount_due,
+            status: invoice.status,
+            line_items: invoice.line_items.length,
+          },
+          sanitisationMap,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to create invoice";
+        return { error: message, available_contracts: availableForError };
+      }
     }
 
     case "analyse_tax_optimisation": {
