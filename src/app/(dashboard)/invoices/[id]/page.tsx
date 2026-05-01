@@ -16,7 +16,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, Send, Ban } from "lucide-react";
+import { Download, Ban } from "lucide-react";
+import { SendInvoiceDialog } from "@/components/invoices/send-invoice-dialog";
 
 type LineItem = {
   id: string;
@@ -47,6 +48,8 @@ type Invoice = {
   payment_instructions: string | null;
   contact_name: string;
   contact_id: string;
+  contact_email: string | null;
+  contact_cc_emails: string | null;
   line_items: LineItem[];
 };
 
@@ -90,11 +93,6 @@ export default function InvoiceDetailPage() {
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  async function handleSend() {
-    await fetch(`/api/invoices/${id}/send`, { method: "POST" });
-    load();
-  }
 
   async function handleVoid() {
     if (!confirm("Void this invoice? This cannot be undone.")) return;
@@ -161,11 +159,19 @@ export default function InvoiceDetailPage() {
 
       {/* Actions */}
       <div className="flex gap-2">
+        {invoice.type === "ACCREC" && invoice.status !== "void" && invoice.status !== "paid" && (
+          <SendInvoiceDialog
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoice_number}
+            contactName={invoice.contact_name}
+            contactEmail={invoice.contact_email}
+            contactCcEmails={invoice.contact_cc_emails}
+            isResend={invoice.status !== "draft"}
+            onSent={load}
+          />
+        )}
         {invoice.status === "draft" && (
           <>
-            <Button onClick={handleSend}>
-              <Send className="mr-2 h-4 w-4" />Send
-            </Button>
             <Button variant="outline" onClick={() => router.push(`/invoices/new?edit=${id}`)}>
               Edit
             </Button>

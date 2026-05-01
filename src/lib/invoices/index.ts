@@ -175,6 +175,7 @@ export function getInvoice(id: string, businessId: string) {
       invoice: schema.invoices,
       contact_name: schema.contacts.name,
       contact_email: schema.contacts.email,
+      contact_cc_emails: schema.contacts.cc_emails,
     })
     .from(schema.invoices)
     .innerJoin(
@@ -201,6 +202,7 @@ export function getInvoice(id: string, businessId: string) {
     ...row.invoice,
     contact_name: decrypt(row.contact_name),
     contact_email: row.contact_email ? decrypt(row.contact_email) : null,
+    contact_cc_emails: row.contact_cc_emails ? decrypt(row.contact_cc_emails) : null,
     line_items: lineItems,
   };
 }

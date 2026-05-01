@@ -1161,7 +1161,7 @@ export async function executeTool(
       // Merge local invoices in Xero format
       const localInvoices = listInvoices(businessId)
         .map((inv) => {
-          const fullInv = { ...inv, contact_email: null, line_items: [] };
+          const fullInv = { ...inv, contact_email: null, contact_cc_emails: null, line_items: [] };
           return toXeroInvoiceFormat(fullInv);
         })
         .filter((inv): inv is XeroInvoice => inv !== null);

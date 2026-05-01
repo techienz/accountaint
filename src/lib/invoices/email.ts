@@ -8,6 +8,7 @@ import { buildEmailConfig } from "@/lib/notifications/email-config";
 import { getTemplate, renderTemplate } from "@/lib/email-templates";
 import { formatDateNzDash } from "@/lib/utils/format-date-nz";
 import { recordEmail } from "@/lib/email-log";
+import { resolveCcRecipients } from "./resolve-cc";
 
 export async function sendInvoiceEmail(
   invoiceId: string,
@@ -82,12 +83,7 @@ export async function sendInvoiceEmail(
   const emailSubject = subject?.trim() || renderTemplate(template.subject, variables);
   const emailBody = body?.trim() || renderTemplate(template.body, variables);
 
-  // Get CC emails from contact or explicit parameter
-  const cc = ccEmails && ccEmails.length > 0
-    ? ccEmails
-    : contact.cc_emails
-      ? contact.cc_emails.split(",").map((e: string) => e.trim()).filter(Boolean)
-      : undefined;
+  const cc = resolveCcRecipients(ccEmails, contact.cc_emails ?? null);
 
   const attachmentName = `${invoice.invoice_number}.pdf`;
   const provider = emailConfig.provider === "graph" ? "graph" : "smtp";
