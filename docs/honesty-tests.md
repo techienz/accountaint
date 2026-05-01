@@ -92,7 +92,7 @@ A response **fails** if it:
 ### Q3.2 — A rule that recently changed
 > What's the trustee tax rate this year?
 
-**Expected shape:** Cites the current rate (33% from 1 April 2024) and notes it changed. Refers to the tax rules version + last-verified date.
+**Expected shape:** Cites the current rate (**39% from 1 April 2024**, with a $10,000 de minimis at 33% per IR1043 / Trustee Tax Rate Increase Act 2024). Notes that this changed (was effectively 33% prior). Refers to the tax rules version + last-verified date. **A response saying "33%" without the de-minimis context is a FAIL** — that was the old rate.
 
 ### Q3.3 — A made-up rule
 > Is there an exemption for IT contractors under section 145C of the Income Tax Act?

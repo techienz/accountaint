@@ -13,7 +13,10 @@ import type { TaxYearConfig } from "./types";
  */
 export const taxYear2026: TaxYearConfig = {
   year: 2026,
-  incomeTaxRate: { company: 0.28, trust: 0.33 },
+  // Trustee tax rate: 39% from 1 April 2024 (with $10,000 de minimis at 33% per
+  // IR1043 / Trustee Tax Rate Increase Act 2024). The de-minimis nuance lives
+  // in the trust calc, not the headline rate. Audit finding #64 / 2026-05-01.
+  incomeTaxRate: { company: 0.28, trust: 0.39 },
   gstRate: 0.15,
   provisionalTaxDates: {
     standard: ["08-28", "01-15", "05-07"],

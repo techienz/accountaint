@@ -11,7 +11,7 @@ keywords: business, tax, obligations, company, sole trader, partnership, trust, 
 - **Sole trader** — business income taxed as personal income at marginal rates (10.5%–39%)
 - **Company** — flat 28% income tax rate, separate legal entity
 - **Partnership** — income flows through to partners, taxed at individual rates
-- **Trust** — trustee income taxed at 33%, beneficiary income at beneficiary's rate
+- **Trust** — trustee income taxed at 39% from 1 April 2024 (with a $10,000 de minimis at 33% per Trustee Tax Rate Increase Act 2024); beneficiary income taxed at the beneficiary's marginal rate
 
 ## Key obligations for all businesses
 1. Register with IRD and get an IRD number

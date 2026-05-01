@@ -12,7 +12,8 @@ import type { TaxYearConfig } from "./types";
  */
 export const taxYear2027: TaxYearConfig = {
   year: 2027,
-  incomeTaxRate: { company: 0.28, trust: 0.33 },
+  // Trustee tax rate: 39% (with $10,000 de minimis at 33%). See 2026.ts comment.
+  incomeTaxRate: { company: 0.28, trust: 0.39 },
   gstRate: 0.15,
   provisionalTaxDates: {
     standard: ["08-28", "01-15", "05-07"],

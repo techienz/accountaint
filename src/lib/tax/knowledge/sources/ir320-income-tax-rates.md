@@ -20,7 +20,7 @@ keywords: income tax, rate, threshold, bracket, company, trust, individual, sole
 - Flat **28%** on all company income
 
 ## Trust rates
-- **Trustee income** (retained in trust): 33%
+- **Trustee income** (retained in trust): **39% from 1 April 2024** (Trustee Tax Rate Increase Act 2024). A **$10,000 de minimis** at 33% applies to small trusts whose trustee income for the year does not exceed $10,000 — see IR1043. The headline rate is 39%; the de minimis applies first.
 - **Beneficiary income** (distributed): taxed at the beneficiary's marginal rate
 
 ## Partnership
