@@ -28,7 +28,6 @@ import { listTimesheetEntries, getTimesheetSummary, createTimesheetEntry, approv
 import { listInvoices, getInvoiceSummary, toXeroInvoiceFormat } from "@/lib/invoices";
 import { createInvoiceFromTimesheets } from "@/lib/invoices/from-timesheets";
 import { sendInvoiceEmail } from "@/lib/invoices/email";
-import { encrypt } from "@/lib/encryption";
 import { createPayRun, finalisePayRun } from "@/lib/payroll";
 import { createContact, updateContact } from "@/lib/contacts";
 import { updateWorkContract } from "@/lib/work-contracts";
@@ -864,12 +863,17 @@ export const chatTools: Tool[] = [
   },
   {
     name: "send_invoice_email",
-    description: "Email an invoice PDF to the contact. Use when the user asks to send or email an invoice.",
+    description:
+      "Email an invoice PDF to the contact saved on the invoice. The recipient is GATED: it must either be omitted (defaults to the invoice's contact email) or exactly match the contact's saved email. Any other value is rejected. To send to a different address, ask the user to update the contact first via /contacts/[id]. This prevents prompt-injected exfiltration of invoices to attacker-controlled addresses.",
     input_schema: {
       type: "object" as const,
       properties: {
         invoice_id: { type: "string", description: "The invoice ID to send" },
-        email: { type: "string", description: "Recipient email address (uses contact email if not provided)" },
+        email: {
+          type: "string",
+          description:
+            "Optional recipient email. If provided it must match the contact's saved email exactly (case-insensitive). Any mismatch is rejected. Omit to use the contact's saved email.",
+        },
         subject: { type: "string", description: "Custom email subject (optional)" },
         body: { type: "string", description: "Custom email body HTML (optional)" },
       },
@@ -1992,9 +1996,10 @@ export async function executeTool(
       const { recordAction: recordActionDel } = await import("@/lib/audit/actions");
       let deleted = 0;
       const notFound: string[] = [];
+      const blockedByInvoice: Array<{ entry_id: string; invoice_id: string; invoice_number: string | null }> = [];
       for (const id of entryIds) {
-        const ok = deleteTimesheetEntry(id, businessId);
-        if (ok) {
+        const result = deleteTimesheetEntry(id, businessId);
+        if (result.ok) {
           deleted++;
           recordActionDel({
             businessId,
@@ -2005,46 +2010,125 @@ export async function executeTool(
             action: "deleted",
             summary: "Deleted via chat (bulk action)",
           });
-        } else notFound.push(id);
+        } else if (result.reason === "invoiced") {
+          // Audit 2026-05-02 #112 — refuse silent invoice corruption.
+          blockedByInvoice.push({
+            entry_id: id,
+            invoice_id: result.invoice_id,
+            invoice_number: result.invoice_number,
+          });
+        } else {
+          notFound.push(id);
+        }
       }
       return {
         success: true,
         deleted,
         not_found: notFound.length > 0 ? notFound : undefined,
+        blocked_by_invoice: blockedByInvoice.length > 0 ? blockedByInvoice : undefined,
+        ...(blockedByInvoice.length > 0
+          ? {
+              warning:
+                `${blockedByInvoice.length} entr${blockedByInvoice.length === 1 ? "y was" : "ies were"} skipped because they're already on an invoice. ` +
+                "Void or delete the invoice first to un-invoice the hours, then retry.",
+            }
+          : {}),
       };
     }
 
     case "create_expense": {
-      const { v4: uuidv4 } = await import("uuid");
-      const expId = uuidv4();
+      // Use the canonical createExpense + updateExpense({status:"confirmed"})
+      // path. Setting status="confirmed" via raw insert skips the journal
+      // posting trigger in updateExpense() and silently corrupts the ledger.
+      // Audit finding 2026-05-02 #108.
+      const { createExpense, updateExpense } = await import("@/lib/expenses");
+      const { getTaxYearConfig, getNzTaxYear } = await import("@/lib/tax/rules");
+
+      const date = toolInput.date as string;
       const amount = toolInput.amount as number;
+      const description = toolInput.description as string;
       const gstIncl = (toolInput.gst_included as boolean) ?? true;
-      const gstRate = 0.15;
-      const gstAmount = gstIncl ? Math.round((amount * gstRate / (1 + gstRate)) * 100) / 100 : Math.round(amount * gstRate * 100) / 100;
-      const db3 = getDb();
-      db3.insert(schema.expenses).values({
-        id: expId,
-        business_id: businessId,
-        date: toolInput.date as string,
-        vendor: encrypt(toolInput.description as string),
-        description: encrypt(toolInput.description as string),
-        category: (toolInput.category as "office_supplies" | "travel" | "meals_entertainment" | "professional_fees" | "software_subscriptions" | "vehicle" | "home_office" | "utilities" | "insurance" | "bank_fees" | "other") || "other",
+      const category = (toolInput.category as
+        | "office_supplies" | "travel" | "meals_entertainment"
+        | "professional_fees" | "software_subscriptions" | "vehicle"
+        | "home_office" | "utilities" | "insurance" | "bank_fees"
+        | "other") || "other";
+
+      // GST rate from versioned rules, not a hardcoded constant.
+      const gstRate = getTaxYearConfig(getNzTaxYear(new Date(date))).gstRate;
+      const gstAmount = gstIncl
+        ? Math.round((amount * gstRate / (1 + gstRate)) * 100) / 100
+        : Math.round(amount * gstRate * 100) / 100;
+
+      const created = await createExpense(businessId, {
+        vendor: description,         // canonical helper encrypts vendor itself
+        description,                  // schema treats description as plain text
         amount,
         gst_amount: gstAmount,
-        status: "confirmed",
-      }).run();
-      return { success: true, expense: { id: expId, amount, description: toolInput.description } };
+        category,
+        date,
+        status: "draft",
+      });
+      if (!created) return { error: "Failed to create expense" };
+
+      // Confirming triggers postExpenseJournal + learnVendorCategory in
+      // updateExpense (lib/expenses/index.ts:124-150).
+      const confirmed = updateExpense(created.id, businessId, { status: "confirmed" });
+      if (!confirmed) return { error: "Created expense but failed to confirm — no journal posted" };
+
+      return {
+        success: true,
+        expense: {
+          id: created.id,
+          amount,
+          description,
+          category,
+          gst_amount: gstAmount,
+        },
+      };
     }
 
     case "send_invoice_email": {
       const invoiceId = toolInput.invoice_id as string;
       if (!invoiceId) return { error: "invoice_id is required" };
       try {
-        const inv = listInvoices(businessId).find((i) => i.id === invoiceId);
+        // Use getInvoice (not the listInvoices lookup) so we get the joined
+        // contact_email — needed for the recipient gate. Audit 2026-05-02 #109.
+        const { getInvoice } = await import("@/lib/invoices");
+        const { validateInvoiceRecipient } = await import("@/lib/invoices/validate-recipient");
+        const inv = getInvoice(invoiceId, businessId);
         if (!inv) return { error: "Invoice not found" };
-        const contactEmail = toolInput.email as string || "";
-        await sendInvoiceEmail(invoiceId, businessId, contactEmail, toolInput.subject as string | undefined, toolInput.body as string | undefined);
-        return { success: true, message: `Invoice emailed successfully` };
+
+        const validation = validateInvoiceRecipient(
+          toolInput.email as string | undefined,
+          inv.contact_email,
+        );
+        if (!validation.ok) {
+          if (validation.reason === "mismatch") {
+            return {
+              error:
+                `Recipient mismatch. The supplied address "${validation.supplied}" does not match the contact's saved email "${validation.contactEmail}". ` +
+                `Re-call without the email argument to send to the saved contact, or ask the user to confirm and update the contact first. ` +
+                `This guard exists because injected attachments / memos can otherwise trick the AI into exfiltrating an invoice.`,
+              available_contact_email: validation.contactEmail,
+            };
+          }
+          return {
+            error:
+              `Cannot send: contact has no saved email address. Ask the user to add one to the contact at /contacts/${inv.contact_id} before sending.`,
+            contact_id: inv.contact_id,
+            contact_name: inv.contact_name,
+          };
+        }
+
+        await sendInvoiceEmail(
+          invoiceId,
+          businessId,
+          validation.email,
+          toolInput.subject as string | undefined,
+          toolInput.body as string | undefined,
+        );
+        return { success: true, message: `Invoice emailed successfully to ${validation.email}` };
       } catch (err) {
         return { error: err instanceof Error ? err.message : "Failed to send email" };
       }

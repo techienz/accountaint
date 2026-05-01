@@ -203,7 +203,21 @@ export function updateTimesheetEntry(
   return getTimesheetEntry(id, businessId);
 }
 
-export function deleteTimesheetEntry(id: string, businessId: string) {
+export type DeleteTimesheetResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "invoiced"; invoice_id: string; invoice_number: string | null };
+
+/**
+ * Delete a timesheet entry. REFUSES to delete entries with status="invoiced":
+ * the previous behaviour silently nulled the FK but left the invoice line
+ * item billing the (now non-existent) hours. Audit 2026-05-02 #112.
+ *
+ * To remove an invoiced entry: void or delete the invoice first, which
+ * un-invoices the entries (status -> approved, invoice_id -> null), then
+ * deletion is allowed.
+ */
+export function deleteTimesheetEntry(id: string, businessId: string): DeleteTimesheetResult {
   const db = getDb();
   const existing = db
     .select()
@@ -215,14 +229,20 @@ export function deleteTimesheetEntry(id: string, businessId: string) {
       )
     )
     .get();
-  if (!existing) return false;
+  if (!existing) return { ok: false, reason: "not_found" };
 
-  // If invoiced, unlink from invoice first
   if (existing.status === "invoiced" && existing.invoice_id) {
-    db.update(schema.timesheetEntries)
-      .set({ status: "approved", invoice_id: null })
-      .where(eq(schema.timesheetEntries.id, id))
-      .run();
+    const invoice = db
+      .select({ id: schema.invoices.id, invoice_number: schema.invoices.invoice_number })
+      .from(schema.invoices)
+      .where(eq(schema.invoices.id, existing.invoice_id))
+      .get();
+    return {
+      ok: false,
+      reason: "invoiced",
+      invoice_id: existing.invoice_id,
+      invoice_number: invoice?.invoice_number ?? null,
+    };
   }
 
   const result = db
@@ -234,7 +254,7 @@ export function deleteTimesheetEntry(id: string, businessId: string) {
       )
     )
     .run();
-  return result.changes > 0;
+  return result.changes > 0 ? { ok: true } : { ok: false, reason: "not_found" };
 }
 
 /**

@@ -42,8 +42,21 @@ export async function DELETE(
   if (!session.activeBusiness) return NextResponse.json({ error: "No active business" }, { status: 400 });
 
   const { id } = await params;
-  const deleted = deleteTimesheetEntry(id, session.activeBusiness.id);
-  if (!deleted) return NextResponse.json({ error: "Not found or not deletable" }, { status: 404 });
-
+  const result = deleteTimesheetEntry(id, session.activeBusiness.id);
+  if (!result.ok) {
+    if (result.reason === "invoiced") {
+      return NextResponse.json(
+        {
+          error:
+            `This timesheet entry is on invoice ${result.invoice_number ?? result.invoice_id}. ` +
+            "Void or delete the invoice first to un-invoice these hours, then try again.",
+          invoice_id: result.invoice_id,
+          invoice_number: result.invoice_number,
+        },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   return NextResponse.json({ success: true });
 }

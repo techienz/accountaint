@@ -174,6 +174,32 @@ export function hasJournalForSource(
 }
 
 /**
+ * Find the active (non-reversed) journal entry for a given source.
+ * Returns null if none exists or all have been reversed. Used by
+ * delete/void paths that need to reverse the original posting.
+ */
+export function findActiveJournalForSource(
+  businessId: string,
+  sourceType: JournalSourceType,
+  sourceId: string
+) {
+  const db = getDb();
+  return db
+    .select()
+    .from(schema.journalEntries)
+    .where(
+      and(
+        eq(schema.journalEntries.business_id, businessId),
+        eq(schema.journalEntries.source_type, sourceType),
+        eq(schema.journalEntries.source_id, sourceId),
+        eq(schema.journalEntries.is_reversed, false)
+      )
+    )
+    .limit(1)
+    .get();
+}
+
+/**
  * Get all journal entries for a business within a date range.
  */
 export function listJournalEntries(

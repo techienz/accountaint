@@ -4,6 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import type { XeroInvoice } from "@/lib/xero/types";
 import { postSalesInvoiceJournal, postPurchaseInvoiceJournal, postInvoiceReversal } from "@/lib/ledger/post";
+import { findActiveJournalForSource, reverseJournalEntry } from "@/lib/ledger/journals";
 
 type InvoiceType = "ACCREC" | "ACCPAY";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "void";
@@ -410,9 +411,33 @@ export function voidInvoice(id: string, businessId: string) {
     .where(eq(schema.invoices.id, id))
     .run();
 
-  // Reverse journal entry
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1. Reverse payment journals first. Without this, voiding a paid invoice
+  //    leaves Cash at Bank "received" against an invoice that no longer exists.
+  //    Audit 2026-05-02 #111.
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const allPayments = db
+      .select()
+      .from(schema.payments)
+      .where(eq(schema.payments.invoice_id, id))
+      .all();
+    for (const p of allPayments) {
+      const paymentJournal = findActiveJournalForSource(businessId, "payment", p.id);
+      if (paymentJournal) {
+        try {
+          reverseJournalEntry(businessId, paymentJournal.id, today);
+        } catch (e) {
+          console.error(`[ledger] Failed to reverse payment ${p.id} journal during void:`, e);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[ledger] Failed to enumerate payments during void:", e);
+  }
+
+  // 2. Reverse the AR/AP side of the invoice itself.
+  try {
     postInvoiceReversal(businessId, id, today);
   } catch (e) {
     console.error("[ledger] Failed to reverse invoice journal:", e);

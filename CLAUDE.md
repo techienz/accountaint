@@ -17,10 +17,11 @@ To read the wiki locally: `git clone https://github.com/techienz/accountaint.wik
 ## Design Principles
 
 ### Security & Privacy First
-- All financial data stays local in encrypted SQLite (SQLCipher). No cloud database.
+- All financial data stays local in SQLite. No cloud database.
+- ~30 sensitive columns (Xero/Akahu/Microsoft Graph tokens, IRD numbers, contact CCs, employee details, etc.) are AES-GCM encrypted at the field level before storage. **Full-database encryption (SQLCipher) is on the roadmap (#67) but not yet implemented** — the database file itself is plaintext SQLite, so disk-level access is a real exposure for now.
 - PII is always anonymised before sending to Claude API — names, IRD numbers, bank accounts stripped. Dollar amounts preserved but attributed to anonymised entities.
 - PII-sensitive tasks (OCR, categorisation, summarisation) should use the local LLM (Qwen3.5-9B via LM Studio) so data never leaves the device. Fall back to Claude Haiku with sanitisation if LM Studio is unavailable.
-- Xero OAuth tokens encrypted at application level before DB storage.
+- Xero and Akahu OAuth tokens, and Microsoft Graph credentials, are field-encrypted before DB storage.
 - Notifications are vague by default — no dollar amounts, account numbers, or entity names unless the user explicitly opts in per channel.
 - Never log sensitive data. Sanitise before logging.
 - Validate all inputs at system boundaries. Never trust data from Xero or external APIs without validation.
@@ -58,14 +59,16 @@ To read the wiki locally: `git clone https://github.com/techienz/accountaint.wik
 
 - **Framework:** Next.js 15 (App Router)
 - **UI:** Tailwind CSS + shadcn/ui + Plus Jakarta Sans
-- **Database:** SQLite via better-sqlite3 + Drizzle ORM (SQLCipher for encryption)
+- **Database:** SQLite via better-sqlite3 + Drizzle ORM (field-level AES-GCM encryption today; full-DB SQLCipher on roadmap #67)
 - **Vector Store:** LanceDB (embedded, hybrid vector + BM25 search)
 - **LLM (reasoning):** Claude API — Sonnet for chat/tax advice (PII-sanitised)
 - **LLM (local):** LM Studio + Qwen3.5-9B — OCR, categorisation, summarisation (PII stays on device)
 - **Embeddings:** LM Studio + Nomic Embed Text V2 (local, no data leaves server)
 - **MCP:** @modelcontextprotocol/sdk — AI tool calling for Xero, tax engine, GST calculator, knowledge search
-- **Xero:** xero-node SDK + OAuth2
-- **Notifications:** SMTP (email), web-push (desktop), Slack webhooks
+- **Bank feeds:** Akahu (read-only OAuth2) — primary source for transactions and balances
+- **Accounting integration:** Xero (xero-node SDK + OAuth2) — optional sync for businesses already on Xero
+- **Email:** SMTP or Microsoft Graph (OAuth2 client_credentials) for invoices, payslips, reminders
+- **Notifications:** Email, web-push (desktop), Slack webhooks
 - **Scheduler:** node-cron (in-process)
 - **Auth:** bcryptjs + jose (JWT), email + 4-digit PIN
 
@@ -85,8 +88,8 @@ If LM Studio is unavailable, local tasks fall back to Claude Haiku with PII sani
 
 ## Architecture
 
-- Multi-tenant: each business has its own Xero connection, tax config, chat history
-- All financial data stays local in encrypted SQLite
+- Multi-tenant: each business has its own Akahu/Xero connection, tax config, chat history
+- All financial data stays local in SQLite. Field-level AES-GCM encryption protects ~30 sensitive columns; full-DB encryption (SQLCipher) is on the roadmap (#67) but not yet implemented — disk-level access to `accountaint.db` exposes plaintext rows for the un-encrypted columns
 - PII is anonymised before sending to Claude API
 - Local LLM handles tasks with raw PII (data never leaves device)
 - RAG pipeline: LanceDB hybrid search over IRD guide chunks, embedded locally via Nomic V2
@@ -131,7 +134,7 @@ src/
     crosscheck/     # Xero change detection, anomaly flagging
   mcp/              # MCP servers for AI tools (planned)
 data/
-  accountaint.db    # SQLite database (encrypted)
+  accountaint.db    # SQLite database (~30 columns field-encrypted; full-DB SQLCipher on roadmap #67)
   receipts/         # Uploaded receipt files per business
   lancedb/          # Vector store data (planned)
   ird-guides/       # Downloaded IRD guide PDFs (planned)

@@ -2,6 +2,8 @@ import { v4 as uuid } from "uuid";
 import { getDb, schema } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
 import { postPaymentReceivedJournal, postPaymentMadeJournal } from "@/lib/ledger/post";
+import { findActiveJournalForSource, reverseJournalEntry } from "@/lib/ledger/journals";
+import { todayNZ } from "@/lib/utils/dates";
 
 type PaymentInput = {
   invoice_id: string;
@@ -132,6 +134,21 @@ export function deletePayment(id: string, businessId: string) {
   if (!payment) return false;
 
   const invoiceId = payment.invoice_id;
+
+  // Reverse the payment journal first (Cash at Bank / AR or AP).
+  // Without this, deleting a payment leaves the cash side posted with no
+  // matching AR/AP — silent ledger drift. Audit 2026-05-02 #110.
+  const journal = findActiveJournalForSource(businessId, "payment", id);
+  if (journal) {
+    try {
+      reverseJournalEntry(businessId, journal.id, todayNZ());
+    } catch (err) {
+      console.error("[ledger] Failed to reverse payment journal on delete:", err);
+      // Don't proceed with the delete if reversal failed — better to leave
+      // the payment in place than to silently desync the ledger.
+      return false;
+    }
+  }
 
   db.delete(schema.payments)
     .where(eq(schema.payments.id, id))
