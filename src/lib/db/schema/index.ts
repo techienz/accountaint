@@ -68,3 +68,4 @@ export { emailTemplates } from "./email-templates";
 export { emailLog } from "./email-log";
 export { jobRuns } from "./job-runs";
 export { chatActions } from "./chat-actions";
+export { auditLog } from "./audit-log";

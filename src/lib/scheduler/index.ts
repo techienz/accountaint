@@ -110,6 +110,14 @@ export function startScheduler() {
     });
   });
 
+  // Weekly System Health check (every Monday at 6:00 AM) — Phase 5 #34
+  cron.schedule("0 6 * * 1", async () => {
+    await runJob("weekly_system_health", async () => {
+      const { runScheduledHealthChecks } = await import("@/lib/audit/scheduled-run");
+      await runScheduledHealthChecks();
+    });
+  });
+
   // Weekly tax optimisation scan near balance date (every Monday at 5:30 AM, only runs if within 60 days of balance date)
   cron.schedule("30 5 * * 1", async () => {
     await runJob("pre_balance_tax_optimisation", async () => {

@@ -826,7 +826,7 @@ export const chatTools: Tool[] = [
   },
   {
     name: "delete_timesheet_entries",
-    description: "Delete one or more timesheet entries. Works on any status — if an entry is already invoiced, it will be unlinked from the invoice first. Use get_recent_time_entries or get_timesheet_summary to find entry IDs first. Always confirm the user's intent before deleting more than one entry.",
+    description: "Delete one or more timesheet entries. TWO-STEP: first call WITHOUT confirm to get a preview (which entries will be deleted, dates, hours, dollars). Show the preview to the user verbatim. Only call again with confirm=true after explicit approval. If an entry is already invoiced, it's unlinked from the invoice first.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -834,6 +834,10 @@ export const chatTools: Tool[] = [
           type: "array",
           items: { type: "string" },
           description: "Array of timesheet entry IDs to delete. Required — never defaults to 'all'.",
+        },
+        confirm: {
+          type: "boolean",
+          description: "Set to true ONLY after showing the preview to the user and getting explicit approval. First call: omit or false → preview returned. Second call after user yes: true → entries deleted.",
         },
       },
       required: ["entry_ids"],
@@ -951,7 +955,7 @@ export const chatTools: Tool[] = [
   {
     name: "declare_dividend",
     description:
-      "Declare a dividend to shareholders, generate a board resolution PDF (NZ Companies Act 1993 s107), record shareholder transactions, and post journal entries. The resolution is stored in the Document Vault. Use get_shareholder_balances first to check current account balances before declaring.",
+      "Declare a dividend to shareholders. TWO-STEP: first call WITHOUT confirm to get a preview (per-shareholder amount split, journal effect). Show the preview to the user verbatim. Only call again with confirm=true after the user explicitly says yes. Generates a board resolution PDF (NZ Companies Act 1993 s107), records shareholder transactions, posts journals.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -966,6 +970,10 @@ export const chatTools: Tool[] = [
         notes: {
           type: "string",
           description: "Optional notes for the board resolution",
+        },
+        confirm: {
+          type: "boolean",
+          description: "Set to true ONLY after showing the preview to the user and getting explicit confirmation. First call: omit or false → preview returned. Second call after user yes: true → action executed.",
         },
       },
       required: ["total_amount"],
@@ -1932,12 +1940,60 @@ export async function executeTool(
       if (!entryIds || entryIds.length === 0) {
         return { error: "entry_ids is required — specify which entries to delete" };
       }
+      const confirm = toolInput.confirm === true;
+
+      // STEP 1: preview
+      if (!confirm) {
+        const db = getDb();
+        const preview = entryIds.map((id) => {
+          const entry = db
+            .select()
+            .from(schema.timesheetEntries)
+            .where(and(eq(schema.timesheetEntries.id, id), eq(schema.timesheetEntries.business_id, businessId)))
+            .get();
+          if (!entry) return { id, status: "not_found" };
+          const hours = entry.duration_minutes / 60;
+          const dollars = (entry.hourly_rate ?? 0) * hours;
+          return {
+            id,
+            date: entry.date,
+            hours: Math.round(hours * 100) / 100,
+            dollars: Math.round(dollars * 100) / 100,
+            status: entry.status,
+            invoiced: entry.invoice_id ? "yes (will be unlinked from invoice)" : "no",
+          };
+        });
+        const totalHours = preview.reduce((s, e) => s + ((e as { hours?: number }).hours ?? 0), 0);
+        const totalDollars = preview.reduce((s, e) => s + ((e as { dollars?: number }).dollars ?? 0), 0);
+        return {
+          preview: true,
+          action: "Delete timesheet entries",
+          entries_to_delete: preview,
+          total_count: preview.length,
+          total_hours: Math.round(totalHours * 100) / 100,
+          total_dollars: Math.round(totalDollars * 100) / 100,
+          message: "PREVIEW. Show this list to the user verbatim. Only call delete_timesheet_entries again with confirm=true once they explicitly approve.",
+        };
+      }
+
+      // STEP 2: execute
+      const { recordAction: recordActionDel } = await import("@/lib/audit/actions");
       let deleted = 0;
       const notFound: string[] = [];
       for (const id of entryIds) {
         const ok = deleteTimesheetEntry(id, businessId);
-        if (ok) deleted++;
-        else notFound.push(id);
+        if (ok) {
+          deleted++;
+          recordActionDel({
+            businessId,
+            userId,
+            source: "chat",
+            entityType: "timesheet_entry",
+            entityId: id,
+            action: "deleted",
+            summary: "Deleted via chat (bulk action)",
+          });
+        } else notFound.push(id);
       }
       return {
         success: true,
@@ -2087,17 +2143,60 @@ export async function executeTool(
     }
 
     case "declare_dividend": {
-      const { declareDividend } = await import("@/lib/dividends");
       const totalAmount = toolInput.total_amount as number;
       if (!totalAmount || totalAmount <= 0) {
         return { error: "total_amount must be a positive number" };
       }
       const date = (toolInput.date as string) || todayNZ();
+      const confirm = toolInput.confirm === true;
+
+      // STEP 1: preview (no confirm) — returns the per-shareholder split for the user to approve
+      if (!confirm) {
+        const db = getDb();
+        const shareholders = db
+          .select()
+          .from(schema.shareholders)
+          .where(eq(schema.shareholders.business_id, businessId))
+          .all();
+        if (shareholders.length === 0) {
+          return { error: "No shareholders found. Add shareholders before declaring a dividend." };
+        }
+        const breakdown = shareholders.map((s) => ({
+          shareholder: decrypt(s.name),
+          ownership_percentage: s.ownership_percentage,
+          gross_amount: Math.round((totalAmount * s.ownership_percentage / 100) * 100) / 100,
+        }));
+        const totalCheck = breakdown.reduce((sum, b) => sum + b.gross_amount, 0);
+        return {
+          preview: true,
+          action: "Declare dividend",
+          total_amount: totalAmount,
+          date,
+          breakdown,
+          rounded_total: Math.round(totalCheck * 100) / 100,
+          notes: (toolInput.notes as string) || null,
+          message: "PREVIEW. Show this breakdown to the user verbatim. Only call declare_dividend again with confirm=true once they explicitly approve. Otherwise stop here.",
+        };
+      }
+
+      // STEP 2: execute (confirm=true)
+      const { declareDividend } = await import("@/lib/dividends");
+      const { recordAction } = await import("@/lib/audit/actions");
       try {
         const result = await declareDividend(businessId, {
           date,
           totalAmount,
           notes: (toolInput.notes as string) || undefined,
+        });
+        recordAction({
+          businessId,
+          userId,
+          source: "chat",
+          entityType: "dividend_declaration",
+          entityId: result.documentId ?? null,
+          action: "declared",
+          summary: `Dividend $${result.totalAmount.toFixed(2)} on ${date} (resolution ${result.resolutionNumber})`,
+          after: { totalAmount: result.totalAmount, date, resolutionNumber: result.resolutionNumber },
         });
         return {
           success: true,

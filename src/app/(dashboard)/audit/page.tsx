@@ -79,6 +79,9 @@ export default async function AuditPage() {
             <Link href="/audit/chat" className="text-muted-foreground hover:text-foreground">
               Chat actions →
             </Link>
+            <Link href="/audit/actions" className="text-muted-foreground hover:text-foreground">
+              Action audit trail →
+            </Link>
           </div>
         </CardContent>
       </Card>
