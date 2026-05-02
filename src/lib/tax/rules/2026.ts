@@ -29,11 +29,28 @@ export const taxYear2026: TaxYearConfig = {
     { threshold: 180000, rate: 0.33 },
     { threshold: Infinity, rate: 0.39 },
   ],
-  mileageRate: 0.99,
+  // Single-rate fallback retained for backward compatibility with the
+  // existing UI / API. Equals the petrol Tier 1 rate. Audit #72.
+  mileageRate: 1.17,
+  kilometreRates: {
+    tier1CapKm: 14000,
+    noLogbookTier1CapKm: 3500,
+    sourceOperationalStatement: "OS 19/04-KM-2025 (used as 2026 placeholder until OS 19/04-KM-2026 is published)",
+    rates: {
+      petrol:        { tier1: 1.17, tier2: 0.37 },
+      diesel:        { tier1: 1.26, tier2: 0.35 },
+      petrol_hybrid: { tier1: 0.86, tier2: 0.21 },
+      electric:      { tier1: 1.08, tier2: 0.19 },
+    },
+  },
   fbtSingleRate: 0.6393,
+  // IRD square-metre rate for home office utilities/telco portion (OS 19/03).
+  // 2025 income year (year ended 31 Mar 2025) = $55.60. 2026 rate not yet
+  // published as of 2026-05-02; using 2025 as placeholder, lastVerified
+  // will trigger the staleness UI when rates roll. Audit #86.
+  homeOfficeSqmRate: 55.60,
   lowValueAssetThreshold: 1000,
   accEarnerLevyRate: 1.67,
-  prescribedInterestRate: 0.0827,
   minimumWage: 23.50,
   minimumWageStartingOut: 18.80,
   kiwisaverMinEmployerRate: 0.03,

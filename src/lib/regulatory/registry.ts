@@ -1,4 +1,4 @@
-import { getTaxYearConfig, type TaxYearConfig } from "@/lib/tax/rules";
+import { getTaxYearConfig, getPrescribedInterestRate, type TaxYearConfig } from "@/lib/tax/rules";
 
 export type RegulatoryArea = {
   id: string;
@@ -115,11 +115,13 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
   },
   {
     id: "prescribed_interest_rate",
-    label: "Prescribed Interest Rate",
-    description: "IRD prescribed interest rate for shareholder current account loans",
-    getCurrentValue: (c) => c.prescribedInterestRate,
+    label: "Prescribed Interest Rate (current quarter)",
+    description: "IRD prescribed interest rate for shareholder current account loans. Published quarterly by Order in Council. Audit #77 — was a single annual scalar; now a quarterly timeline.",
+    // Pull the current quarter's rate from the dynamic timeline rather than
+    // a per-year config field. The TaxYearConfig argument is unused here.
+    getCurrentValue: () => getPrescribedInterestRate(new Date()),
     formatForDisplay: formatPercent,
-    configField: "prescribedInterestRate",
+    configField: "prescribedInterestRates",
   },
   {
     id: "gst_rate",

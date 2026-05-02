@@ -1,8 +1,10 @@
 import type { TaxYearConfig } from "./types";
+import { taxYear2025 } from "./2025";
 import { taxYear2026 } from "./2026";
 import { taxYear2027 } from "./2027";
 
 const taxYears: Record<number, TaxYearConfig> = {
+  2025: taxYear2025,
   2026: taxYear2026,
   2027: taxYear2027,
 };
@@ -102,3 +104,10 @@ export type {
   PayeFrequency,
 } from "./types";
 export { getStandardGstRate } from "./gst-rate";
+export {
+  prescribedInterestRates,
+  getPrescribedInterestRate,
+  getPrescribedInterestPeriods,
+  type PrescribedInterestPeriod,
+  type PrescribedInterestSlice,
+} from "./prescribed-interest-rates";

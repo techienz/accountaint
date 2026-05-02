@@ -317,18 +317,24 @@ export const chatTools: Tool[] = [
   {
     name: "calculate_home_office",
     description:
-      "Calculate the home office deduction based on office area, total home area, and household costs.",
+      "Calculate the home office deduction based on office area, total home area, and household costs. Two methods: 'proportional' (prorate every cost by area ratio — needs all receipts) and 'sqm_rate' (IRD's flat-rate alternative — utilities/telco covered by office_area × IRD per-m² rate; premises costs still itemised + prorated). Defaults to 'proportional' for backward compat.",
     input_schema: {
       type: "object" as const,
       properties: {
+        method: {
+          type: "string",
+          enum: ["proportional", "sqm_rate"],
+          description: "Calculation method (default 'proportional').",
+        },
         office_area_sqm: { type: "number", description: "Office area in square metres" },
         total_area_sqm: { type: "number", description: "Total home area in square metres" },
         rates: { type: "number", description: "Annual rates ($)" },
         insurance: { type: "number", description: "Annual home insurance ($)" },
         mortgage_interest: { type: "number", description: "Annual mortgage interest ($)" },
         rent: { type: "number", description: "Annual rent ($)" },
-        power: { type: "number", description: "Annual power ($)" },
-        internet: { type: "number", description: "Annual internet ($)" },
+        power: { type: "number", description: "Annual power ($) — ignored under sqm_rate (covered by flat rate)" },
+        internet: { type: "number", description: "Annual internet ($) — ignored under sqm_rate (covered by flat rate)" },
+        tax_year: { type: "number", description: "NZ tax year (e.g. 2026) — used to look up the IRD per-m² rate for sqm_rate. Defaults to current tax year." },
       },
       required: ["office_area_sqm", "total_area_sqm"],
     },
@@ -1426,8 +1432,12 @@ export async function executeTool(
     }
 
     case "calculate_home_office": {
+      // Audit #86 — branch on method (was hardcoded "proportional", which
+      // silently dropped the IRD per-m² portion of the sqm_rate method).
+      const method = (toolInput.method as "proportional" | "sqm_rate") || "proportional";
+      const taxYear = (toolInput.tax_year as number) || getNzTaxYear(new Date());
       const result = calculateHomeOffice(
-        "proportional",
+        method,
         (toolInput.office_area_sqm as number) || 0,
         (toolInput.total_area_sqm as number) || 0,
         {
@@ -1437,7 +1447,8 @@ export async function executeTool(
           rent: (toolInput.rent as number) || 0,
           power: (toolInput.power as number) || 0,
           internet: (toolInput.internet as number) || 0,
-        }
+        },
+        taxYear,
       );
       return result;
     }

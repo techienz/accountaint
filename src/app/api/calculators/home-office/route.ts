@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
     method,
     office_area_sqm,
     total_area_sqm,
-    costs
+    costs,
+    Number(taxYear), // pass through so sqm_rate uses the right per-m² IRD rate
   );
 
   const db = getDb();

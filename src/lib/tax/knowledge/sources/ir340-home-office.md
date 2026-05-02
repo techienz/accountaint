@@ -10,9 +10,14 @@ keywords: home office, working from home, proportion, floor area, mortgage, rent
 If you use part of your home for business, you can claim a proportion of household expenses.
 
 ## Calculating your claim
-Two methods:
-1. **Proportional method** — based on the floor area of your home office divided by total floor area, multiplied by household costs
-2. **IRD square metre rate** — a flat rate per square metre of home office space (check IRD for current rate, approximately $50.75 per sqm per year for the 2025 tax year)
+Two methods (per IRD OS 19/03):
+
+1. **Proportional method** — every household cost (rates, insurance, mortgage interest or rent, power, internet, repairs) is prorated by `office_area / total_area`. Requires keeping all receipts.
+
+2. **IRD square metre rate** — a flat rate per m² of home office area covers utilities, telecommunications, repairs/maintenance and depreciation of household items. Premises costs (rates, insurance, mortgage interest, rent) are still itemised and prorated separately. Per-m² rates (CPI-adjusted annually):
+   - 2024 income year: $53.10/m²
+   - **2025 income year: $55.60/m²**
+   - 2026 income year: not yet published (IRD usually releases in May)
 
 ## Claimable expenses (proportional method)
 - Rent or mortgage interest (not principal repayments)
