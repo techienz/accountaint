@@ -46,12 +46,15 @@ export default async function GstPeriodsPage() {
 
   const gstStatuses = statuses.filter((s) => s.filing_type === "gst");
 
+  // Audit #115 — surface basis on every GST surface.
+  const basis = business.gst_basis === "payments" ? "Payments" : "Invoice";
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">GST Returns</h1>
         <p className="text-muted-foreground">
-          Select a period to prepare your GST101A return
+          Select a period to prepare your GST101A return · <span className="font-medium">{basis} basis</span>
         </p>
       </div>
 

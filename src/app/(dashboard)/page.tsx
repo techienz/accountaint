@@ -562,6 +562,7 @@ export default async function DashboardPage() {
             <GstCard
               deadlines={allDeadlines.filter((d) => d.type === "gst")}
               filingPeriod={biz.gst_filing_period}
+              basis={biz.gst_basis as "invoice" | "payments" | null}
             />
           )}
           <DeadlinesCard deadlines={allDeadlines.slice(0, 5)} />

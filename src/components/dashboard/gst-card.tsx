@@ -20,9 +20,11 @@ function daysUntil(dateStr: string): number {
 export function GstCard({
   deadlines,
   filingPeriod,
+  basis,
 }: {
   deadlines: Deadline[];
   filingPeriod: string | null;
+  basis?: "invoice" | "payments" | null;
 }) {
   const nextGst = deadlines[0];
 
@@ -35,12 +37,16 @@ export function GstCard({
           ? "6-monthly"
           : "";
 
+  // Audit #115 — surface basis on every GST surface so users always know
+  // which interpretation the displayed numbers reflect.
+  const basisLabel = basis === "payments" ? "Payments basis" : basis === "invoice" ? "Invoice basis" : "";
+
   if (!nextGst) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium">
-            GST ({periodLabel})
+            GST ({periodLabel}{basisLabel ? ` · ${basisLabel}` : ""})
           </CardTitle>
         </CardHeader>
         <CardContent>

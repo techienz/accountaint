@@ -46,13 +46,19 @@ export default async function GstHistoryPage() {
     6
   );
 
+  // Pass the business's configured basis through (default invoice for legacy
+  // businesses without it set). Audit #115.
+  const basis: "invoice" | "payments" = biz.gst_basis === "payments" ? "payments" : "invoice";
   const results = periods
-    .map((period) => calculateGstReturnFromLedger(biz.id, period, gstRate))
-    .filter((r): r is NonNullable<typeof r> => r !== null);
+    .map((period) => calculateGstReturnFromLedger(biz.id, period, basis, gstRate))
+    .filter((r): r is Extract<typeof r, { empty?: false }> => !("empty" in r) || !r.empty);
 
   return (
     <>
       <ReportHeader title="GST History" />
+      <p className="text-xs text-muted-foreground -mt-3 mb-3">
+        Computed from posted journal entries · <span className="font-medium">{basis === "payments" ? "Payments" : "Invoice"} basis</span>
+      </p>
       <Card>
         <CardContent className="pt-6">
           {results.length === 0 ? (
