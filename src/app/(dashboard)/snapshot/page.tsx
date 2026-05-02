@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth";
 import { getDb, schema } from "@/lib/db";
 import { eq, and, lt, lte, gte } from "drizzle-orm";
 import { calculateSnapshotMetrics } from "@/lib/reports/snapshot";
+import { calculateSnapshotMetricsFromLedger } from "@/lib/reports/snapshot-from-ledger";
+import { compareSnapshots, formatDrift } from "@/lib/reports/snapshot-compare";
 import { MetricCard } from "@/components/snapshot/metric-card";
 import { CashFlowCard } from "@/components/snapshot/cash-flow-card";
 import { ReceivablesCard } from "@/components/snapshot/receivables-card";
@@ -212,54 +214,37 @@ export default async function SnapshotPage() {
     .all();
   const connected = xeroConnectionRows.length > 0;
 
-  if (!connected) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Business Snapshot</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your daily overview
-            </p>
-          </div>
-        </div>
+  // Audit #129 — ledger is now the source of truth for /snapshot. Xero
+  // (if connected) is an overlay that surfaces drift via a banner per
+  // metric, so the snapshot works with or without Xero and any sync
+  // mismatch is visible rather than hidden.
+  const metrics = calculateSnapshotMetricsFromLedger(businessId);
 
-        <ActionItems data={actionData} />
+  let xeroMetrics: typeof metrics | null = null;
+  let compare: ReturnType<typeof compareSnapshots> | null = null;
 
-        <p className="text-sm text-muted-foreground">
-          <Link href="/settings/xero" className="text-primary hover:underline">
-            Connect Xero
-          </Link>{" "}
-          to see revenue, expenses, and cash flow metrics.
-        </p>
-      </div>
-    );
+  if (connected) {
+    const cache = db
+      .select()
+      .from(schema.xeroCache)
+      .where(eq(schema.xeroCache.business_id, businessId))
+      .all();
+    const cacheMap = new Map(cache.map((c) => [c.entity_type, c]));
+    function getCacheData<T>(type: string): T | null {
+      const entry = cacheMap.get(type);
+      if (!entry) return null;
+      try { return JSON.parse(entry.data) as T; } catch { return null; }
+    }
+    const invoicesData = getCacheData<{ Invoices: XeroInvoice[] }>("invoices");
+    const invoices: XeroInvoice[] = invoicesData?.Invoices || [];
+    const monthlyPLRaw = getCacheData<{ Reports?: XeroReport[] } | XeroReport>("profit_loss_monthly");
+    const monthlyPL: XeroReport | null =
+      monthlyPLRaw && "Reports" in monthlyPLRaw && monthlyPLRaw.Reports?.[0]
+        ? monthlyPLRaw.Reports[0]
+        : (monthlyPLRaw as XeroReport | null);
+    xeroMetrics = calculateSnapshotMetrics(invoices, monthlyPL);
+    compare = compareSnapshots(metrics, xeroMetrics);
   }
-
-  // Get cached data for Xero metrics
-  const cache = db
-    .select()
-    .from(schema.xeroCache)
-    .where(eq(schema.xeroCache.business_id, businessId))
-    .all();
-  const cacheMap = new Map(cache.map((c) => [c.entity_type, c]));
-
-  function getCacheData<T>(type: string): T | null {
-    const entry = cacheMap.get(type);
-    if (!entry) return null;
-    try { return JSON.parse(entry.data) as T; } catch { return null; }
-  }
-
-  const invoicesData = getCacheData<{ Invoices: XeroInvoice[] }>("invoices");
-  const invoices: XeroInvoice[] = invoicesData?.Invoices || [];
-
-  const monthlyPLRaw = getCacheData<{ Reports?: XeroReport[] } | XeroReport>("profit_loss_monthly");
-  const monthlyPL: XeroReport | null =
-    monthlyPLRaw && "Reports" in monthlyPLRaw && monthlyPLRaw.Reports?.[0]
-      ? monthlyPLRaw.Reports[0]
-      : (monthlyPLRaw as XeroReport | null);
-
-  const metrics = calculateSnapshotMetrics(invoices, monthlyPL);
 
   const snapshotContext = {
     ...PAGE_CONTEXTS.snapshot,
@@ -280,6 +265,33 @@ export default async function SnapshotPage() {
       </div>
 
       <ActionItems data={actionData} />
+
+      {/* Source-of-truth banner — local ledger always; Xero comparison if connected. Audit #129. */}
+      {!connected && (
+        <p className="text-xs text-muted-foreground -mt-3">
+          Computed from your local ledger. <Link href="/settings/xero" className="underline">Connect Xero</Link> to cross-check against your Xero data.
+        </p>
+      )}
+      {connected && compare && compare.materialCount > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800/60 p-3 text-xs space-y-1">
+          <p className="font-medium">
+            {compare.materialCount} metric{compare.materialCount === 1 ? "" : "s"} differ between local ledger and Xero cache:
+          </p>
+          {compare.revenue.material && <p>• Revenue: {formatDrift(compare.revenue)}</p>}
+          {compare.expenses.material && <p>• Expenses: {formatDrift(compare.expenses)}</p>}
+          {compare.netProfit.material && <p>• Net profit: {formatDrift(compare.netProfit)}</p>}
+          {compare.receivables.material && <p>• Receivables: {formatDrift(compare.receivables)}</p>}
+          {compare.payables.material && <p>• Payables: {formatDrift(compare.payables)}</p>}
+          <p className="text-muted-foreground pt-1">
+            Numbers shown below are local-ledger truth. Sync Xero or post missing journals to converge.
+          </p>
+        </div>
+      )}
+      {connected && compare && compare.materialCount === 0 && (
+        <p className="text-xs text-emerald-600 dark:text-emerald-400 -mt-3">
+          ✓ Local ledger and Xero cache agree on all key metrics.
+        </p>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard
