@@ -20,9 +20,9 @@ export function ContractsCard({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-sm font-medium">Contracts</CardTitle>
+        <CardTitle className="text-sm font-medium">Subscriptions</CardTitle>
         <Link
-          href="/contracts"
+          href="/subscriptions"
           className="text-xs text-muted-foreground hover:text-foreground"
         >
           View all
@@ -34,13 +34,13 @@ export function ContractsCard({
           <span className="font-medium">${formatNzd(monthlyTotal)}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Active contracts</span>
+          <span className="text-sm text-muted-foreground">Active subscriptions</span>
           <span className="font-medium">{totalContracts}</span>
         </div>
         {expiringCount > 0 && (
           <div className="border-t pt-3">
             <p className="text-xs text-amber-600">
-              {expiringCount} {expiringCount === 1 ? "contract" : "contracts"} expiring soon
+              {expiringCount} {expiringCount === 1 ? "subscription" : "subscriptions"} expiring soon
             </p>
           </div>
         )}

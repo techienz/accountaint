@@ -110,7 +110,7 @@ function buildNavItems(hasEmployees: boolean, xeroConnected: boolean): NavItem[]
       icon: CreditCard,
       collapsibleKey: "spend",
       children: [
-        { href: "/contracts", label: "Contracts", icon: ScrollText },
+        { href: "/subscriptions", label: "Subscriptions", icon: ScrollText },
         { href: "/expenses", label: "Expenses", icon: CreditCard },
         { href: "/assets", label: "Assets", icon: Package },
       ],
@@ -213,7 +213,7 @@ export function Sidebar({ userName, businesses, activeBusinessId, hasEmployees =
     tax: pathname.startsWith("/deadlines") || pathname.startsWith("/tax-") || pathname.startsWith("/shareholders"),
     reports: pathname.startsWith("/reports"),
     earn: pathname.startsWith("/work-contracts") || pathname.startsWith("/timesheets") || pathname.startsWith("/invoices"),
-    spend: pathname.startsWith("/contracts") || pathname.startsWith("/expenses") || pathname.startsWith("/assets"),
+    spend: pathname.startsWith("/subscriptions") || pathname.startsWith("/contracts") || pathname.startsWith("/expenses") || pathname.startsWith("/assets"),
     employees: pathname.startsWith("/employees") || pathname.startsWith("/payroll"),
     personal: pathname.startsWith("/budget"),
     calculators: pathname.startsWith("/calculators"),
