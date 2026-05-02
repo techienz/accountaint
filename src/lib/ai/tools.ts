@@ -148,7 +148,7 @@ export const chatTools: Tool[] = [
   {
     name: "calculate_gst_return",
     description:
-      "Calculate a GST return for a specific period. Returns totals for sales, purchases, GST collected, GST paid, and net GST.",
+      "Calculate a GST return for a specific period. Computed from posted journal entries (so it includes confirmed expenses + manual GST adjustments, not just invoices). Uses the business's configured filing basis ('invoice' or 'payments' — see get_business_config). Returns totals for sales, purchases, GST collected, GST paid, net GST, and a per-line breakdown. The same numbers appear at /tax-prep/gst/[period] and /reports/gst-history.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -1188,25 +1188,34 @@ export async function executeTool(
       const config = getBusinessConfig(businessId, userId);
       if (!config) return { error: "Business not found" };
       if (!config.gst_registered) return { error: "This business is not registered for GST" };
-      const xeroInvoices = getCachedData<XeroInvoice[]>(businessId, "invoices") || [];
-      // Merge local invoices in Xero format
-      const localInvoices = listInvoices(businessId)
-        .map((inv) => {
-          const fullInv = { ...inv, contact_email: null, contact_cc_emails: null, line_items: [] };
-          return toXeroInvoiceFormat(fullInv);
-        })
-        .filter((inv): inv is XeroInvoice => inv !== null);
-      const allInvoices = [...xeroInvoices, ...localInvoices];
-      if (allInvoices.length === 0) return { error: "No invoice data available. Sync Xero or create local invoices first." };
+
       const taxYear = getTaxYear(new Date());
-      // GST rate from versioned rules — was a literal 0.15 fallback (audit #117).
       const gstRate = taxYear?.gstRate ?? getStandardGstRate();
       const period: GstPeriod = {
         from: toolInput.period_from as string,
         to: toolInput.period_to as string,
       };
-      const basis = (config.gst_basis === "payments" ? "payments" : "invoice") as "invoice" | "payments";
-      const result = calculateGstReturn(allInvoices, period, basis, gstRate);
+      const basis: "invoice" | "payments" = config.gst_basis === "payments" ? "payments" : "invoice";
+
+      // Migrated from invoice-based calc to ledger-based (audit #115).
+      // Captures confirmed expenses + manual GST adjustments that the
+      // invoice-only path missed. The two GST surfaces (/tax-prep/gst,
+      // /reports/gst-history) and this chat tool now agree on the same
+      // numbers for the same period.
+      const { calculateGstReturnFromLedger } = await import("@/lib/gst/calculator");
+      const result = calculateGstReturnFromLedger(businessId, period, basis, gstRate);
+
+      if ("empty" in result && result.empty) {
+        return {
+          empty: true,
+          reason: result.reason,
+          basis,
+          message: result.reason === "no_gst_accounts"
+            ? "No GST accounts (2200 / 1300) configured. Run chart-of-accounts setup before calculating GST."
+            : "No posted journal entries in this period — nothing to file. Confirm expenses or post invoices first.",
+        };
+      }
+
       return sanitiseXeroData(result, sanitisationMap);
     }
 

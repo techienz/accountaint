@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getDb, schema } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
-import { calculateGstReturn } from "@/lib/gst/calculator";
+import { calculateGstReturnFromLedger } from "@/lib/gst/calculator";
 import { getTaxYear } from "@/lib/tax/rules";
-import type { XeroInvoice } from "@/lib/xero/types";
 
 export async function GET(
   request: Request,
@@ -27,30 +26,19 @@ export async function GET(
 
   const db = getDb();
 
-  // Load invoices from cache
-  const cached = db
-    .select()
-    .from(schema.xeroCache)
-    .where(eq(schema.xeroCache.business_id, business.id))
-    .all()
-    .find((c) => c.entity_type === "invoices");
-
-  const invoices: XeroInvoice[] = cached
-    ? (JSON.parse(cached.data)?.Invoices || [])
-    : [];
-
   const taxConfig = getTaxYear(new Date());
   const gstRate = taxConfig?.gstRate || 0.15;
   const basis = (business.gst_basis as "invoice" | "payments") || "invoice";
 
-  const result = calculateGstReturn(
-    invoices,
+  // Migrated from invoice-based to ledger-based calc (audit #115). Captures
+  // confirmed expenses + manual GST adjustments in addition to invoices.
+  const result = calculateGstReturnFromLedger(
+    business.id,
     { from: periodFrom, to: periodTo },
     basis,
-    gstRate
+    gstRate,
   );
 
-  // Load filing status
   const periodKey = `${periodFrom}_${periodTo}`;
   const [filingRecord] = await db
     .select()
@@ -62,6 +50,26 @@ export async function GET(
         eq(schema.filingStatus.period_key, periodKey)
       )
     );
+
+  // Empty result — return a zeroed shape so the worksheet still renders
+  // cleanly. The reason is surfaced for the UI to optionally display.
+  if ("empty" in result && result.empty) {
+    return NextResponse.json({
+      period: { from: periodFrom, to: periodTo },
+      basis,
+      gstRate,
+      totalSales: 0,
+      totalPurchases: 0,
+      gstOnSales: 0,
+      gstOnPurchases: 0,
+      netGst: 0,
+      lineItems: [],
+      empty: true,
+      emptyReason: result.reason,
+      filingStatus: filingRecord?.status || "not_started",
+      filedDate: filingRecord?.filed_date || null,
+    });
+  }
 
   return NextResponse.json({
     ...result,
