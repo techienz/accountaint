@@ -1,0 +1,35 @@
+# Audit #130 — chat-honesty regression suite. Runs in warn-only mode
+# (continue-on-error: true) until the rubric is stable; flip to hard-
+# fail in a follow-up PR after ~2 weeks of clean runs.
+#
+# Currently runs the STUB responder by default (no API key wired). The
+# real chat-dispatcher responder needs a test-DB harness — when that's
+# ready, set ANTHROPIC_API_KEY in the repo secrets and HONESTY_STUB=0
+# in the env block below.
+name: Honesty regression suite
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/ai/**'
+      - 'src/lib/honesty/**'
+      - 'scripts/honesty.ts'
+      - 'docs/honesty-tests.md'
+      - 'src/lib/tax/rules/**'
+
+jobs:
+  honesty:
+    runs-on: ubuntu-latest
+    continue-on-error: true     # warn-only initial mode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run honesty suite (stub mode — see #130)
+        env:
+          HONESTY_STUB: '1'
+        run: npm run honesty
