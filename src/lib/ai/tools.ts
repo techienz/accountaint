@@ -442,7 +442,7 @@ export const chatTools: Tool[] = [
   {
     name: "get_business_snapshot",
     description:
-      "Get a full business health snapshot: revenue, expenses, net profit with month-over-month changes, cash flow, receivables, payables, and margins.",
+      "Get a full business health snapshot from the LOCAL LEDGER (always available, no Xero required): revenue, expenses, net profit with month-over-month changes, cash flow, receivables, payables, and margins. If Xero is connected, also returns Xero-cache metrics + a per-metric drift comparison so you can flag sync mismatches. Result shape: `{ source: 'local_only' | 'local_with_xero_overlay', metrics, xero?, compare? }`.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -1524,13 +1524,31 @@ export async function executeTool(
     }
 
     case "get_business_snapshot": {
+      // Audit #129 — ledger is the source of truth. Xero (if connected)
+      // is layered as an overlay so the chat tool sees both numbers and
+      // a per-metric drift signal, mirroring what /snapshot now shows.
+      const { calculateSnapshotMetricsFromLedger } = await import("@/lib/reports/snapshot-from-ledger");
+      const { compareSnapshots } = await import("@/lib/reports/snapshot-compare");
+      const local = calculateSnapshotMetricsFromLedger(businessId);
+
       const invoiceData = getCachedData<{ Invoices: XeroInvoice[] }>(businessId, "invoices");
       const invoices = invoiceData?.Invoices || [];
       const monthlyPL = getCachedData<XeroReport>(businessId, "profit_loss_monthly");
-      if (invoices.length === 0 && !monthlyPL) {
-        return { error: "No Xero data synced yet. Please sync Xero data first." };
+      const xero = invoices.length > 0 || monthlyPL
+        ? calculateSnapshotMetrics(invoices, monthlyPL)
+        : null;
+
+      if (!xero) {
+        return { source: "local_only", metrics: local };
       }
-      return calculateSnapshotMetrics(invoices, monthlyPL);
+
+      const compare = compareSnapshots(local, xero);
+      return {
+        source: "local_with_xero_overlay",
+        metrics: local,
+        xero,
+        compare,
+      };
     }
 
     case "get_document_summary": {
