@@ -22,7 +22,7 @@ export const JOB_CATALOG: Record<string, { label: string; expected_interval_seco
   regulatory_check:                { label: "Regulatory rules check",        expected_interval_seconds: 31 * 24 * 60 * 60 }, // monthly
   tax_optimisation_scan:           { label: "Tax optimisation scan",         expected_interval_seconds: 31 * 24 * 60 * 60 }, // monthly
   pre_balance_tax_optimisation:    { label: "Pre-balance tax optimisation",  expected_interval_seconds: 7 * 24 * 60 * 60 }, // weekly
-  weekly_system_health:            { label: "Weekly System Health check",    expected_interval_seconds: 7 * 24 * 60 * 60 }, // weekly
+  weekly_system_health:            { label: "Weekly system integrity check", expected_interval_seconds: 7 * 24 * 60 * 60 }, // weekly
 };
 
 /**

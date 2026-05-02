@@ -144,3 +144,23 @@ drizzle/            # Migration files
 ## Users
 
 Example users: a sole director company (no employees) and a company with employees. Both use Xero. The app serves as their accountant and financial partner — managing tax compliance, financial strategy, and business decisions without needing an external accountant.
+
+## Glossary — disambiguating overloaded terms
+
+The codebase carries a few words that mean different things in different places. When writing chat tool descriptions, UI copy, or new code, prefer the prefixed form below over the bare term.
+
+### "Transaction" — four distinct meanings
+- **`bank_tx`** → `bank_transactions` table (Akahu bank-feed entries). Tools: `get_bank_transactions`, `match_bank_transaction`, `categorise_bank_transaction`, `reconcile_bank_transaction`, `exclude_bank_transaction`, `suggest_bank_matches`.
+- **`budget_tx`** → `budget_transactions` table (personal budget entries; not business accounting).
+- **`shareholder_tx`** → `shareholder_transactions` table (shareholder current-account movements: drawings, repayments, dividends, salary).
+- **`journal_entry`** → `journal_entries` table (the actual double-entry bookkeeping records). When a chat tool says "match a bank transaction to a journal entry" it means this kind.
+
+### "Contract" — two distinct meanings
+- **subscription** → `contracts` table (recurring spend like Netflix, Adobe, hosting). Sidebar reads "Spend → Subscriptions" (post-rename in #128B). Old `contracts` route redirects to `/subscriptions`.
+- **work contract** → `work_contracts` table (client engagements where the business earns income — hourly, fixed-price, retainer). Sidebar reads "Earn → Work Contracts". Tool: `get_work_contracts`.
+
+The schema table names stay as `contracts` and `*_transactions` for now (rename deferred under #121 Option C). Use the prefixed form in chat tool descriptions, UI copy, and PR text.
+
+### Other terms worth pinning
+- **"Health Checklist"** (dashboard `/`) — user-facing setup checklist (connect Akahu, set GST basis, add a contact). Different from "System integrity" (`/audit`) which is the technical / app-integrity surface.
+- **"PAYE"** in `lib/payroll/calculator.ts` correctly means the COMBINED IRD figure (income tax + ACC earner levy). The income-tax-only piece is exposed as `payeIncomeTax` on `PayCalculationResult`.

@@ -40,7 +40,7 @@ export default async function ActionsAuditPage({
   return (
     <div className="space-y-6 max-w-[1200px]">
       <div>
-        <Link href="/audit" className="text-xs text-muted-foreground hover:text-foreground">← System Health</Link>
+        <Link href="/audit" className="text-xs text-muted-foreground hover:text-foreground">← System integrity</Link>
         <h1 className="text-2xl font-bold tracking-tight mt-1">Action Audit Trail</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Cross-cutting log of state-changing actions — UI, chat, API, scheduler. Use to answer &ldquo;who did what when&rdquo;.

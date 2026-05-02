@@ -53,7 +53,7 @@ export default async function ChatAuditPage({
   return (
     <div className="space-y-6 max-w-[1200px]">
       <div>
-        <Link href="/audit" className="text-xs text-muted-foreground hover:text-foreground">← System Health</Link>
+        <Link href="/audit" className="text-xs text-muted-foreground hover:text-foreground">← System integrity</Link>
         <h1 className="text-2xl font-bold tracking-tight mt-1">Chat Action Log</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Every tool call the AI made, grouped by conversation. Browse here to spot hallucinations or unexpected behaviour after the fact.

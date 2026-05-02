@@ -37,9 +37,9 @@ export default async function AuditPage() {
   return (
     <div className="space-y-6 max-w-[1100px]">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">System Health</h1>
+        <h1 className="text-2xl font-bold tracking-tight">System integrity</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Internal integrity checks. Different from your business health checklist — this verifies the app itself is working correctly.
+          Internal integrity checks for the app itself. Different from the dashboard health checklist (which is about your business setup).
         </p>
       </div>
 

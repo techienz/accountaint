@@ -33,9 +33,9 @@ export async function runScheduledHealthChecks(): Promise<void> {
           businessId: biz.id,
           userId: biz.owner_user_id,
           businessName: biz.name,
-          title: `System Health: ${failures.length} failure${failures.length === 1 ? "" : "s"}`,
+          title: `System integrity: ${failures.length} failure${failures.length === 1 ? "" : "s"}`,
           body: `${failureLines}\n\nVisit /audit on Accountaint to investigate.`,
-          vagueTitle: "System Health alert",
+          vagueTitle: "System integrity alert",
           vagueBody: "An app integrity check failed — review on /audit.",
           type: "alert",
         });

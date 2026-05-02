@@ -37,7 +37,7 @@ export default async function JobsAuditPage() {
   return (
     <div className="space-y-6 max-w-[1100px]">
       <div>
-        <Link href="/audit" className="text-xs text-muted-foreground hover:text-foreground">← System Health</Link>
+        <Link href="/audit" className="text-xs text-muted-foreground hover:text-foreground">← System integrity</Link>
         <h1 className="text-2xl font-bold tracking-tight mt-1">Scheduled Jobs</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Status of every scheduled job + the last 100 runs across all jobs.
