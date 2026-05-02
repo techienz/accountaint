@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { calculatePersonalTax, type PersonalTaxResult } from "./personal-tax";
+import { getTaxYearConfig } from "./rules";
 import { getRunningBalance } from "@/lib/shareholders/balance";
 import { checkDeemedDividend } from "@/lib/shareholders/deemed-dividend";
 import { calculateFif, type FifResult } from "./fif";
@@ -80,9 +81,14 @@ export async function prepareIR3(
       )
     );
 
+  // Company income tax rate from versioned rules (audit #117). The grossed-up
+  // dividend is calculated as net / (1 - company_rate) — was hardcoded 0.28
+  // and would silently fall behind a future rate change.
+  const companyTaxRate = getTaxYearConfig(Number(taxYear)).incomeTaxRate.company;
+
   const salary = salaryConfig?.salary_amount || 0;
   const dividendGross = salaryConfig
-    ? salaryConfig.dividend_amount / (1 - 0.28) // gross up at company tax rate
+    ? salaryConfig.dividend_amount / (1 - companyTaxRate)
     : 0;
   const imputationCredits = salaryConfig?.imputation_credits || 0;
 
@@ -121,12 +127,13 @@ export async function prepareIR3(
     isOverdrawn: balanceResult.isOverdrawn,
   };
 
-  // Deemed dividend computation
+  // Deemed dividend computation — gross-up uses the same company tax rate.
+  // Imputation credit = grossUp - net = net * rate / (1 - rate) (audit #117).
   const deemedDividendGrossedUp = deemedResult.hasDeemedDividend
-    ? deemedResult.maxOverdrawnAmount / (1 - 0.28)
+    ? deemedResult.maxOverdrawnAmount / (1 - companyTaxRate)
     : 0;
   const deemedDividendImputation = deemedResult.hasDeemedDividend
-    ? (deemedResult.maxOverdrawnAmount * 0.28) / 0.72
+    ? (deemedResult.maxOverdrawnAmount * companyTaxRate) / (1 - companyTaxRate)
     : 0;
 
   const deemedDividend = {

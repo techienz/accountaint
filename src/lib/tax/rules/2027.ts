@@ -45,6 +45,14 @@ export const taxYear2027: TaxYearConfig = {
     { threshold: 216000, rate: 0.33 },
     { threshold: Infinity, rate: 0.39 },
   ],
+  secondaryTaxRates: {
+    SB: 0.105,
+    S: 0.175,
+    SH: 0.30,
+    ST: 0.33,
+    SA: 0.39,
+  },
+  nonDeclarationRate: 0.45,
   studentLoanPerPeriodThresholds: {
     weekly: 464,
     fortnightly: 928,

@@ -5,6 +5,7 @@ import { createInvoice } from "./index";
 import { sendInvoiceEmail } from "./email";
 import { nextRunDate, type RecurrenceFrequency } from "./recurrence";
 import { todayNZ } from "@/lib/utils/dates";
+import { getStandardGstRate } from "@/lib/tax/rules";
 
 export type RecurringScheduleInput = {
   contact_id: string;
@@ -72,7 +73,7 @@ export function createRecurringSchedule(businessId: string, input: RecurringSche
       description: line.description,
       quantity: line.quantity,
       unit_price: line.unit_price,
-      gst_rate: line.gst_rate ?? 0.15,
+      gst_rate: line.gst_rate ?? getStandardGstRate(),
       account_code: line.account_code ?? null,
       sort_order: line.sort_order ?? i,
     }).run();
@@ -128,7 +129,7 @@ export function updateRecurringSchedule(
         description: line.description,
         quantity: line.quantity,
         unit_price: line.unit_price,
-        gst_rate: line.gst_rate ?? 0.15,
+        gst_rate: line.gst_rate ?? getStandardGstRate(),
         account_code: line.account_code ?? null,
         sort_order: line.sort_order ?? i,
       }).run();

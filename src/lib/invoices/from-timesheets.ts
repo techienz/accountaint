@@ -3,6 +3,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import { findOrCreateContactByName } from "@/lib/contacts";
 import { createInvoice } from "./index";
+import { getStandardGstRate } from "@/lib/tax/rules";
 
 type TimesheetInvoiceRequest = {
   work_contract_id: string;
@@ -138,7 +139,7 @@ export async function createInvoiceFromTimesheets(
           description: desc,
           quantity: hours,
           unit_price: entry.hourly_rate ?? hourlyRate,
-          gst_rate: req.gst_rate ?? 0.15,
+          gst_rate: req.gst_rate ?? getStandardGstRate(),
           work_contract_id: req.work_contract_id,
         });
       }
@@ -148,7 +149,7 @@ export async function createInvoiceFromTimesheets(
         description: `${clientName} — ${totalHours}hrs (${dateRange})`,
         quantity: totalHours,
         unit_price: hourlyRate,
-        gst_rate: req.gst_rate ?? 0.15,
+        gst_rate: req.gst_rate ?? getStandardGstRate(),
         work_contract_id: req.work_contract_id,
       });
     }

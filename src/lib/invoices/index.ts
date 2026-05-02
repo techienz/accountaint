@@ -5,6 +5,7 @@ import { decrypt } from "@/lib/encryption";
 import type { XeroInvoice } from "@/lib/xero/types";
 import { postSalesInvoiceJournal, postPurchaseInvoiceJournal, postInvoiceReversal } from "@/lib/ledger/post";
 import { findActiveJournalForSource, reverseJournalEntry } from "@/lib/ledger/journals";
+import { getStandardGstRate } from "@/lib/tax/rules";
 
 type InvoiceType = "ACCREC" | "ACCPAY";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "void";
@@ -36,7 +37,7 @@ function calculateLineItem(
   item: LineItemInput,
   gstInclusive: boolean
 ) {
-  const gstRate = item.gst_rate ?? 0.15;
+  const gstRate = item.gst_rate ?? getStandardGstRate();
   let lineTotal: number;
   let gstAmount: number;
 
@@ -156,7 +157,7 @@ export function createInvoice(businessId: string, data: InvoiceInput) {
         description: item.description,
         quantity: item.quantity,
         unit_price: item.unit_price,
-        gst_rate: item.gst_rate ?? 0.15,
+        gst_rate: item.gst_rate ?? getStandardGstRate(),
         line_total,
         gst_amount,
         account_code: item.account_code ?? null,
@@ -267,7 +268,7 @@ export function updateInvoice(
           description: item.description,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          gst_rate: item.gst_rate ?? 0.15,
+          gst_rate: item.gst_rate ?? getStandardGstRate(),
           line_total,
           gst_amount,
           account_code: item.account_code ?? null,

@@ -6,6 +6,7 @@ import { createJournalEntry } from "./journals";
 import { getAccountByCode } from "./accounts";
 import { getExpenseAccountCode, SYSTEM_ACCOUNTS } from "./account-mapping";
 import type { JournalLineInput } from "./types";
+import { getStandardGstRate } from "@/lib/tax/rules";
 
 export type MatchSuggestion = {
   journal_entry_id: string;
@@ -268,8 +269,10 @@ export function createAndMatch(
   accountCode: string,
   description: string,
   gstInclusive: boolean = true,
-  gstRate: number = 0.15
+  gstRate?: number,
 ): string | null {
+  // Default to the current standard GST rate from versioned rules. Audit #117.
+  const effectiveGstRate = gstRate ?? getStandardGstRate();
   const db = getDb();
 
   const txn = db
@@ -303,7 +306,7 @@ export function createAndMatch(
   let gstAmount = 0;
 
   if (gstInclusive && targetAccount.gst_applicable) {
-    exGst = absAmount / (1 + gstRate);
+    exGst = absAmount / (1 + effectiveGstRate);
     gstAmount = absAmount - exGst;
   }
 
@@ -320,7 +323,7 @@ export function createAndMatch(
           debit: Math.round(gstAmount * 100) / 100,
           credit: 0,
           gst_amount: Math.round(gstAmount * 100) / 100,
-          gst_rate: gstRate,
+          gst_rate: effectiveGstRate,
         });
       }
     }
@@ -336,7 +339,7 @@ export function createAndMatch(
           debit: 0,
           credit: Math.round(gstAmount * 100) / 100,
           gst_amount: Math.round(gstAmount * 100) / 100,
-          gst_rate: gstRate,
+          gst_rate: effectiveGstRate,
         });
       }
     }

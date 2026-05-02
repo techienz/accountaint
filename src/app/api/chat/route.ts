@@ -91,7 +91,22 @@ export async function POST(request: NextRequest) {
   }
 
   const contacts: XeroContact[] = [...localAsXero, ...xeroContacts];
-  const sanitisationMap = buildSanitisationMap(contacts);
+
+  // Shareholder names — audit #119. The buildSanitisationMap function
+  // accepts these but the previous chat route never passed them, so
+  // shareholders' names ("pay Kurt $5000 dividend") reached Claude verbatim.
+  const shareholders = db
+    .select({ name: schema.shareholders.name })
+    .from(schema.shareholders)
+    .where(eq(schema.shareholders.business_id, business.id))
+    .all();
+  const shareholderNames = shareholders
+    .map((s) => {
+      try { return decrypt(s.name); } catch { return null; }
+    })
+    .filter((n): n is string => !!n);
+
+  const sanitisationMap = buildSanitisationMap(contacts, shareholderNames);
 
   // Sanitise user message
   const sanitisedMessage = sanitise(trimmedMessage, sanitisationMap);

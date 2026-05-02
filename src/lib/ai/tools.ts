@@ -3,7 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { eq, and, desc, gte } from "drizzle-orm";
 import { formatDateNZ, todayNZ } from "@/lib/utils/dates";
 import { calculateDeadlines } from "@/lib/tax/deadlines";
-import { getTaxYear, getNzTaxYear, getTaxYearConfig } from "@/lib/tax/rules";
+import { getTaxYear, getNzTaxYear, getTaxYearConfig, getStandardGstRate } from "@/lib/tax/rules";
 import { calculateGstReturn, type GstPeriod } from "@/lib/gst/calculator";
 import { sanitiseXeroData } from "./sanitise";
 import type { SanitisationMap } from "./types";
@@ -773,7 +773,7 @@ export const chatTools: Tool[] = [
   {
     name: "email_payslips",
     description:
-      "Email payslips to employees from a finalised pay run. One email per employee with their own payslip PDF attached. Uses the Payslip email template by default. Pay run must be finalised first; employees must have an email address on their record.",
+      "Email payslips to employees from a finalised pay run. TWO-STEP with server-issued preview token: (1) first call WITHOUT preview_token returns a preview (recipient list with names + emails, count) AND a preview_token; (2) show the preview to the user verbatim and only after explicit approval, call AGAIN with the SAME pay_run_id (and same employee_ids if you set any) plus preview_token to execute. Token is single-use, expires after 5 minutes. Pay run must be finalised first; employees must have an email address on their record.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -781,7 +781,7 @@ export const chatTools: Tool[] = [
         employee_ids: {
           type: "array",
           items: { type: "string" },
-          description: "Employee IDs to send to. If omitted, sends to all employees in the pay run.",
+          description: "Employee IDs to send to. If omitted, sends to all employees in the pay run. Must be identical between preview and execute.",
         },
         subject: {
           type: "string",
@@ -791,6 +791,10 @@ export const chatTools: Tool[] = [
           type: "string",
           description: "Per-send body (HTML) override. Applied to all emails in this batch.",
         },
+        preview_token: {
+          type: "string",
+          description: "Server-issued token from a prior preview call. Omit on first call to get a preview. Include on second call to execute.",
+        },
       },
       required: ["pay_run_id"],
     },
@@ -798,7 +802,7 @@ export const chatTools: Tool[] = [
   {
     name: "email_timesheet",
     description:
-      "Email a timesheet to a recipient. Attaches the timesheet as PDF, Excel, and/or CSV. Uses the Timesheet email template by default but the subject/body can be overridden per send. Defaults to approved + invoiced entries only — set include_drafts=true to include draft entries.",
+      "Email a timesheet to a recipient. TWO-STEP with server-issued preview token: (1) first call WITHOUT preview_token returns a preview (recipient + period + entry count + total hours/amount + formats) AND a preview_token; (2) show the preview to the user verbatim and only after explicit approval, call AGAIN with the SAME args plus preview_token to execute. Token is single-use, expires after 5 minutes. Attaches the timesheet as PDF, Excel, and/or CSV. Uses the Timesheet email template by default but the subject/body can be overridden per send. Defaults to approved + invoiced entries only — set include_drafts=true to include draft entries.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -830,6 +834,10 @@ export const chatTools: Tool[] = [
         body: {
           type: "string",
           description: "Per-send body (HTML) override. Leave empty to use the Timesheet template.",
+        },
+        preview_token: {
+          type: "string",
+          description: "Server-issued token from a prior preview call. Omit on first call to get a preview. Include on second call to execute.",
         },
       },
       required: ["contract_id", "date_from", "date_to", "recipient"],
@@ -876,7 +884,7 @@ export const chatTools: Tool[] = [
   {
     name: "send_invoice_email",
     description:
-      "Email an invoice PDF to the contact saved on the invoice. The recipient is GATED: it must either be omitted (defaults to the invoice's contact email) or exactly match the contact's saved email. Any other value is rejected. To send to a different address, ask the user to update the contact first via /contacts/[id]. This prevents prompt-injected exfiltration of invoices to attacker-controlled addresses.",
+      "Email an invoice PDF. TWO-STEP with server-issued preview token: (1) first call WITHOUT preview_token returns a preview (recipient + amount + attachment) AND a preview_token; (2) show the preview to the user verbatim, and only after explicit approval, call AGAIN with the SAME invoice_id (and same email if you set one) plus preview_token to execute. Recipient is GATED: must either be omitted (defaults to the invoice's contact email) or exactly match the contact's saved email — any mismatch is rejected. Token is single-use, expires after 5 minutes, and is invalidated if any args change.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -888,6 +896,10 @@ export const chatTools: Tool[] = [
         },
         subject: { type: "string", description: "Custom email subject (optional)" },
         body: { type: "string", description: "Custom email body HTML (optional)" },
+        preview_token: {
+          type: "string",
+          description: "Server-issued token from a prior preview call. Omit on first call to get a preview. Include on second call to execute.",
+        },
       },
       required: ["invoice_id"],
     },
@@ -928,11 +940,16 @@ export const chatTools: Tool[] = [
   },
   {
     name: "finalise_pay_run",
-    description: "Finalise a draft pay run — locks it and posts journal entries. Use when the user confirms they want to finalise payroll.",
+    description:
+      "Finalise a draft pay run — locks it and posts journal entries. TWO-STEP with server-issued preview token: (1) first call WITHOUT preview_token returns a preview (period, employees, totals, journal effect) AND a preview_token; (2) show the preview to the user verbatim and only after explicit approval, call AGAIN with the SAME pay_run_id plus preview_token to execute. Token is single-use, expires after 5 minutes. Once finalised the pay run is immutable — there is currently no Reverse path.",
     input_schema: {
       type: "object" as const,
       properties: {
         pay_run_id: { type: "string", description: "The pay run ID to finalise" },
+        preview_token: {
+          type: "string",
+          description: "Server-issued token from a prior preview call. Omit on first call to get a preview. Include on second call to execute.",
+        },
       },
       required: ["pay_run_id"],
     },
@@ -1065,9 +1082,19 @@ export async function executeTool(
     case "get_bank_accounts": {
       // Local-first: Akahu accounts
       const { decrypt: dec } = await import("@/lib/encryption");
+      const { sanitise: sanitiseStr } = await import("@/lib/ai/sanitise");
       const akahuAccts = getDb().select().from(schema.akahuAccounts).where(eq(schema.akahuAccounts.linked_business_id, businessId)).all();
       if (akahuAccts.length > 0) {
-        return akahuAccts.map((a) => ({ name: dec(a.name), institution: dec(a.institution), balance: a.balance, source: "akahu" }));
+        // Audit #119 — Akahu account/institution names contain PII (often the
+        // business owner's personal name on the account). Sanitise before
+        // returning to the model. Was previously the only branch in this
+        // file that returned bank-account strings unsanitised.
+        return akahuAccts.map((a) => ({
+          name: sanitiseStr(dec(a.name), sanitisationMap),
+          institution: sanitiseStr(dec(a.institution), sanitisationMap),
+          balance: a.balance,
+          source: "akahu",
+        }));
       }
       // Fallback: Xero cache
       const data = getCachedData<{ Accounts: XeroBankAccount[] }>(businessId, "bank_accounts");
@@ -1172,7 +1199,8 @@ export async function executeTool(
       const allInvoices = [...xeroInvoices, ...localInvoices];
       if (allInvoices.length === 0) return { error: "No invoice data available. Sync Xero or create local invoices first." };
       const taxYear = getTaxYear(new Date());
-      const gstRate = taxYear?.gstRate ?? 0.15;
+      // GST rate from versioned rules — was a literal 0.15 fallback (audit #117).
+      const gstRate = taxYear?.gstRate ?? getStandardGstRate();
       const period: GstPeriod = {
         from: toolInput.period_from as string,
         to: toolInput.period_to as string,
@@ -1774,7 +1802,7 @@ export async function executeTool(
       const { resolveContractForInvoice } = await import("@/lib/invoices/resolve-contract");
       const rawContractId = toolInput.work_contract_id as string | undefined;
       const clientNameHint = toolInput.client_name as string | undefined;
-      const gstRate = (toolInput.gst_rate as number) ?? 0.15;
+      const gstRate = (toolInput.gst_rate as number) ?? getStandardGstRate();
       const includeInvoiced = (toolInput.include_invoiced as boolean) ?? false;
       const dateFrom = toolInput.date_from as string | undefined;
       const dateTo = toolInput.date_to as string | undefined;
@@ -1839,6 +1867,13 @@ export async function executeTool(
     // ── Banking / Reconciliation execution ─────────────────────────────
 
     case "get_bank_transactions": {
+      // Audit #119 — bank tx descriptions and merchant names are decrypted
+      // raw from Akahu and commonly embed contact / employee / customer
+      // names. Run through sanitise() so any matching contact / shareholder
+      // names are anonymised before reaching Claude. Unknown merchants pass
+      // through unchanged (best effort — the sanitisation map is built from
+      // contacts + shareholders only).
+      const { sanitise: sanitiseStr } = await import("@/lib/ai/sanitise");
       const statusFilter = (toolInput.status as string) || "unmatched";
       const limit = (toolInput.limit as number) || 20;
       const txns = getDb()
@@ -1851,9 +1886,9 @@ export async function executeTool(
         .map((t) => ({
           id: t.id,
           date: t.date,
-          description: decrypt(t.description),
+          description: sanitiseStr(decrypt(t.description), sanitisationMap),
           amount: t.amount,
-          merchant: t.merchant_name ? decrypt(t.merchant_name) : null,
+          merchant: t.merchant_name ? sanitiseStr(decrypt(t.merchant_name), sanitisationMap) : null,
           status: t.reconciliation_status,
         }));
       return { transactions: txns, count: txns.length };
@@ -1936,11 +1971,86 @@ export async function executeTool(
       const { sendPayslipEmails } = await import("@/lib/payroll/email");
       const payRunId = toolInput.pay_run_id as string;
       if (!payRunId) return { error: "pay_run_id is required" };
+      const previewToken = toolInput.preview_token as string | undefined;
+      const employeeIds = toolInput.employee_ids as string[] | undefined;
+
       try {
+        const { getPayRun } = await import("@/lib/payroll");
+        const { listEmployees } = await import("@/lib/employees");
+        const pr = getPayRun(payRunId, businessId);
+        if (!pr) return { error: "Pay run not found" };
+        if (pr.status !== "finalised") {
+          return { error: `Pay run is ${pr.status} — finalise it first before emailing payslips` };
+        }
+
+        // Build the list of intended recipients for the preview / args binding.
+        const allEmps = listEmployees(businessId);
+        const targetIds = new Set(
+          employeeIds && employeeIds.length > 0
+            ? employeeIds
+            : pr.lines.map((l) => l.employee_id),
+        );
+        const recipients = allEmps
+          .filter((e) => targetIds.has(e.id))
+          .map((e) => ({ id: e.id, name: e.name, email: e.email, missing_email: !e.email }));
+
+        // Preview-token state machine (audit #118).
+        if (!previewToken) {
+          const args = {
+            pay_run_id: payRunId,
+            employee_ids: employeeIds,
+            subject: toolInput.subject,
+            body: toolInput.body,
+          };
+          const { issuePreviewToken } = await import("./preview-token");
+          const token = issuePreviewToken({
+            businessId,
+            userId,
+            toolName: "email_payslips",
+            args,
+          });
+          const missing = recipients.filter((r) => r.missing_email);
+          return {
+            preview: true,
+            pay_run_id: payRunId,
+            period_start: pr.period_start,
+            period_end: pr.period_end,
+            recipients_count: recipients.length,
+            recipients,
+            missing_email_count: missing.length,
+            preview_token: token,
+            message:
+              "PREVIEW. Show this list to the user verbatim. To execute, call email_payslips AGAIN with the SAME pay_run_id (and SAME employee_ids if you set any) plus preview_token=" +
+              token +
+              ". Token is single-use, expires in 5 minutes." +
+              (missing.length > 0
+                ? ` ${missing.length} employee(s) lack a saved email and will be skipped silently — flag this to the user.`
+                : ""),
+          };
+        }
+
+        const { consumePreviewToken } = await import("./preview-token");
+        const consume = consumePreviewToken({
+          token: previewToken,
+          businessId,
+          toolName: "email_payslips",
+          args: {
+            pay_run_id: payRunId,
+            employee_ids: employeeIds,
+            subject: toolInput.subject,
+            body: toolInput.body,
+          },
+        });
+        if (!consume.ok) {
+          return {
+            error: `Preview token rejected: ${consume.reason}. Re-issue a preview by calling email_payslips without preview_token.`,
+          };
+        }
+
         const result = await sendPayslipEmails({
           businessId,
           payRunId,
-          employeeIds: toolInput.employee_ids as string[] | undefined,
+          employeeIds,
           subject: toolInput.subject as string | undefined,
           body: toolInput.body as string | undefined,
         });
@@ -1965,16 +2075,91 @@ export async function executeTool(
         return { error: "contract_id, date_from, date_to, recipient are required" };
       }
       const formats = (toolInput.formats as Array<"pdf" | "xlsx" | "csv">) ?? ["pdf"];
+      const includeDrafts = toolInput.include_drafts as boolean | undefined;
+      const ccEmails = toolInput.cc_emails as string[] | undefined;
+      const previewToken = toolInput.preview_token as string | undefined;
+
       try {
+        // Preview-token state machine (audit #118).
+        if (!previewToken) {
+          const { listTimesheetEntries } = await import("@/lib/timesheets");
+          const entries = listTimesheetEntries(businessId, { dateFrom, dateTo, workContractId: contractId });
+          const filtered = includeDrafts ? entries : entries.filter((e) => e.status !== "draft");
+          const totalMinutes = filtered.reduce((s, e) => s + e.duration_minutes, 0);
+          const totalAmount = filtered
+            .filter((e) => e.billable && e.hourly_rate)
+            .reduce((s, e) => s + (e.hourly_rate! * e.duration_minutes) / 60, 0);
+          const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
+
+          const args = {
+            contract_id: contractId,
+            date_from: dateFrom,
+            date_to: dateTo,
+            recipient,
+            cc_emails: ccEmails,
+            formats,
+            include_drafts: includeDrafts,
+            subject: toolInput.subject,
+            body: toolInput.body,
+          };
+          const { issuePreviewToken } = await import("./preview-token");
+          const token = issuePreviewToken({
+            businessId,
+            userId,
+            toolName: "email_timesheet",
+            args,
+          });
+          return {
+            preview: true,
+            recipient,
+            cc_emails: ccEmails ?? [],
+            date_from: dateFrom,
+            date_to: dateTo,
+            entry_count: filtered.length,
+            total_hours: totalHours,
+            total_amount: Math.round(totalAmount * 100) / 100,
+            formats,
+            include_drafts: includeDrafts ?? false,
+            preview_token: token,
+            message:
+              "PREVIEW. Show this to the user verbatim. To execute, call email_timesheet AGAIN with the SAME args plus preview_token=" +
+              token +
+              ". Token is single-use, expires in 5 minutes. If args change between preview and execute, the token is invalidated.",
+          };
+        }
+
+        const { consumePreviewToken } = await import("./preview-token");
+        const consume = consumePreviewToken({
+          token: previewToken,
+          businessId,
+          toolName: "email_timesheet",
+          args: {
+            contract_id: contractId,
+            date_from: dateFrom,
+            date_to: dateTo,
+            recipient,
+            cc_emails: ccEmails,
+            formats,
+            include_drafts: includeDrafts,
+            subject: toolInput.subject,
+            body: toolInput.body,
+          },
+        });
+        if (!consume.ok) {
+          return {
+            error: `Preview token rejected: ${consume.reason}. Re-issue a preview by calling email_timesheet without preview_token.`,
+          };
+        }
+
         const result = await sendTimesheetEmail({
           businessId,
           contractId,
           dateFrom,
           dateTo,
           recipient,
-          ccEmails: toolInput.cc_emails as string[] | undefined,
+          ccEmails,
           formats,
-          includeDrafts: toolInput.include_drafts as boolean | undefined,
+          includeDrafts,
           subject: toolInput.subject as string | undefined,
           body: toolInput.body as string | undefined,
         });
@@ -2139,14 +2324,16 @@ export async function executeTool(
     case "send_invoice_email": {
       const invoiceId = toolInput.invoice_id as string;
       if (!invoiceId) return { error: "invoice_id is required" };
+      const previewToken = toolInput.preview_token as string | undefined;
+
       try {
-        // Use getInvoice (not the listInvoices lookup) so we get the joined
-        // contact_email — needed for the recipient gate. Audit 2026-05-02 #109.
         const { getInvoice } = await import("@/lib/invoices");
         const { validateInvoiceRecipient } = await import("@/lib/invoices/validate-recipient");
         const inv = getInvoice(invoiceId, businessId);
         if (!inv) return { error: "Invoice not found" };
 
+        // Recipient gate (#109) — runs before AND independent of the token
+        // dance so previews show the validated address.
         const validation = validateInvoiceRecipient(
           toolInput.email as string | undefined,
           inv.contact_email,
@@ -2166,6 +2353,55 @@ export async function executeTool(
               `Cannot send: contact has no saved email address. Ask the user to add one to the contact at /contacts/${inv.contact_id} before sending.`,
             contact_id: inv.contact_id,
             contact_name: inv.contact_name,
+          };
+        }
+
+        // Preview-token state machine (audit #118).
+        if (!previewToken) {
+          const args = {
+            invoice_id: invoiceId,
+            email: toolInput.email,
+            subject: toolInput.subject,
+            body: toolInput.body,
+          };
+          const { issuePreviewToken } = await import("./preview-token");
+          const token = issuePreviewToken({
+            businessId,
+            userId,
+            toolName: "send_invoice_email",
+            args,
+          });
+          return {
+            preview: true,
+            invoice_number: inv.invoice_number,
+            contact_name: inv.contact_name,
+            recipient: validation.email,
+            amount_due: inv.amount_due,
+            total: inv.total,
+            attachment: `${inv.invoice_number}.pdf`,
+            preview_token: token,
+            message:
+              "PREVIEW. Show this to the user verbatim. To execute, call send_invoice_email AGAIN with the SAME invoice_id (and same email if you set one) plus preview_token=" +
+              token +
+              ". Token is single-use and expires in 5 minutes. If args change between preview and execute, the token is invalidated.",
+          };
+        }
+
+        const { consumePreviewToken } = await import("./preview-token");
+        const consume = consumePreviewToken({
+          token: previewToken,
+          businessId,
+          toolName: "send_invoice_email",
+          args: {
+            invoice_id: invoiceId,
+            email: toolInput.email,
+            subject: toolInput.subject,
+            body: toolInput.body,
+          },
+        });
+        if (!consume.ok) {
+          return {
+            error: `Preview token rejected: ${consume.reason}. Re-issue a preview by calling send_invoice_email without preview_token.`,
           };
         }
 
@@ -2253,7 +2489,78 @@ export async function executeTool(
     case "finalise_pay_run": {
       const payRunId = toolInput.pay_run_id as string;
       if (!payRunId) return { error: "pay_run_id is required" };
+      const previewToken = toolInput.preview_token as string | undefined;
+
       try {
+        const { getPayRun } = await import("@/lib/payroll");
+        const pr = getPayRun(payRunId, businessId);
+        if (!pr) return { error: "Pay run not found" };
+        if (pr.status !== "draft") {
+          return { error: `Pay run is already ${pr.status} — only draft pay runs can be finalised` };
+        }
+
+        // Preview-token state machine (audit #118).
+        if (!previewToken) {
+          const totals = pr.lines.reduce(
+            (acc, l) => ({
+              gross: acc.gross + l.gross_pay,
+              paye: acc.paye + l.paye,
+              ks_employee: acc.ks_employee + l.kiwisaver_employee,
+              ks_employer: acc.ks_employer + l.kiwisaver_employer,
+              esct: acc.esct + l.esct,
+              student_loan: acc.student_loan + l.student_loan,
+              net: acc.net + l.net_pay,
+            }),
+            { gross: 0, paye: 0, ks_employee: 0, ks_employer: 0, esct: 0, student_loan: 0, net: 0 },
+          );
+          const round2 = (n: number) => Math.round(n * 100) / 100;
+          const { issuePreviewToken } = await import("./preview-token");
+          const token = issuePreviewToken({
+            businessId,
+            userId,
+            toolName: "finalise_pay_run",
+            args: { pay_run_id: payRunId },
+          });
+          return {
+            preview: true,
+            pay_run_id: payRunId,
+            period_start: pr.period_start,
+            period_end: pr.period_end,
+            pay_date: pr.pay_date,
+            employees: pr.lines.length,
+            totals: {
+              gross_pay: round2(totals.gross),
+              paye: round2(totals.paye),
+              kiwisaver_employee: round2(totals.ks_employee),
+              kiwisaver_employer: round2(totals.ks_employer),
+              esct: round2(totals.esct),
+              student_loan: round2(totals.student_loan),
+              net_pay: round2(totals.net),
+            },
+            journal_effect:
+              "Will post: Dr Wages & Salaries (gross), Dr Employer KiwiSaver, Dr ESCT; Cr PAYE Payable (PAYE+ESCT), Cr KiwiSaver Payable, Cr Student Loan Payable, Cr Bank (net pay).",
+            warning: "Once finalised the pay run is immutable. There is currently no Reverse path.",
+            preview_token: token,
+            message:
+              "PREVIEW. Show this to the user verbatim. To execute, call finalise_pay_run AGAIN with the SAME pay_run_id plus preview_token=" +
+              token +
+              ". Token is single-use and expires in 5 minutes.",
+          };
+        }
+
+        const { consumePreviewToken } = await import("./preview-token");
+        const consume = consumePreviewToken({
+          token: previewToken,
+          businessId,
+          toolName: "finalise_pay_run",
+          args: { pay_run_id: payRunId },
+        });
+        if (!consume.ok) {
+          return {
+            error: `Preview token rejected: ${consume.reason}. Re-issue a preview by calling finalise_pay_run without preview_token.`,
+          };
+        }
+
         const result = finalisePayRun(payRunId, businessId);
         return { success: true, message: "Pay run finalised and journal entries posted", status: result?.status };
       } catch (err) {

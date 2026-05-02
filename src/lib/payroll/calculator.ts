@@ -26,14 +26,6 @@ export type PayCalculationResult = {
   netPay: number;
 };
 
-const SECONDARY_RATES: Record<string, number> = {
-  SB: 0.105,
-  S: 0.175,
-  SH: 0.30,
-  ST: 0.33,
-  SA: 0.39,
-};
-
 function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -54,12 +46,16 @@ export function calculatePayeIncomeTax(
   const config = getTaxYearConfig(taxYear);
   const baseCode = taxCode.replace(" SL", "").trim();
 
+  // ND ("non-declaration") rate from versioned rules — was hardcoded 0.45.
+  // Audit #117.
   if (baseCode === "ND") {
-    return round(grossPay * 0.45);
+    return round(grossPay * config.nonDeclarationRate);
   }
 
-  if (SECONDARY_RATES[baseCode] !== undefined) {
-    return round(grossPay * SECONDARY_RATES[baseCode]);
+  // Secondary rates (SB/S/SH/ST/SA) from versioned rules — was a module-
+  // level const that wouldn't change with the tax year.
+  if (config.secondaryTaxRates[baseCode] !== undefined) {
+    return round(grossPay * config.secondaryTaxRates[baseCode]);
   }
 
   const factor = config.payPeriodFactors[frequency];
@@ -135,7 +131,7 @@ export function calculateStudentLoan(
 
   const config = getTaxYearConfig(taxYear);
   const baseCode = taxCode.replace(" SL", "").trim();
-  const isSecondary = SECONDARY_RATES[baseCode] !== undefined;
+  const isSecondary = config.secondaryTaxRates[baseCode] !== undefined;
 
   if (isSecondary) {
     return round(grossPay * config.studentLoanRepaymentRate);

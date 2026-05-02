@@ -24,6 +24,11 @@ export type TaxYearConfig = {
   studentLoanRepaymentThreshold: number; // annual income threshold before repayments start
   accEarnerLevyCap: number;              // max liable earnings for ACC earner levy
   esctBrackets: TaxBracket[];
+  // Flat secondary-tax rates by tax code (SB/S/SH/ST/SA). IRD publishes these
+  // separately from the marginal-bracket rates. Audit #117.
+  secondaryTaxRates: Record<string, number>;
+  // ND tax code rate — applied to employees who haven't supplied an IR330.
+  nonDeclarationRate: number;
   studentLoanPerPeriodThresholds: {
     weekly: number;
     fortnightly: number;

@@ -4,6 +4,7 @@ import { getAccountByCode } from "./accounts";
 import { createJournalEntry, hasJournalForSource, reverseJournalEntry } from "./journals";
 import { getExpenseAccountCode, SYSTEM_ACCOUNTS } from "./account-mapping";
 import type { JournalLineInput } from "./types";
+import { getStandardGstRate } from "@/lib/tax/rules";
 
 function requireAccount(businessId: string, code: string): string {
   const account = getAccountByCode(businessId, code);
@@ -43,7 +44,7 @@ export function postSalesInvoiceJournal(businessId: string, invoice: {
       debit: 0,
       credit: invoice.gst_total,
       gst_amount: invoice.gst_total,
-      gst_rate: 0.15,
+      gst_rate: getStandardGstRate(invoice.date),
     });
   }
 
@@ -96,7 +97,7 @@ export function postPurchaseInvoiceJournal(businessId: string, invoice: {
       debit: invoice.gst_total,
       credit: 0,
       gst_amount: invoice.gst_total,
-      gst_rate: 0.15,
+      gst_rate: getStandardGstRate(invoice.date),
     });
   }
 
@@ -208,7 +209,7 @@ export function postExpenseJournal(businessId: string, expense: {
       debit: gst,
       credit: 0,
       gst_amount: gst,
-      gst_rate: 0.15,
+      gst_rate: getStandardGstRate(expense.date),
     });
   }
 

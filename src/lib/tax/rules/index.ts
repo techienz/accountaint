@@ -101,3 +101,4 @@ export type {
   ProvisionalTaxMethod,
   PayeFrequency,
 } from "./types";
+export { getStandardGstRate } from "./gst-rate";
