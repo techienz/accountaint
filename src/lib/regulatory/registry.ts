@@ -7,6 +7,14 @@ export type RegulatoryArea = {
   getCurrentValue: (config: TaxYearConfig) => unknown;
   formatForDisplay: (value: unknown) => string;
   configField: string; // field name in TaxYearConfig
+  /**
+   * Authoritative source URLs for this rate. The verifier will cite these
+   * to Claude as the primary place to look, reducing the chance the AI
+   * confirms a value from a stale cached page or its prior training data.
+   * Where possible, point at the IRD/MBIE page that lists the rate with
+   * an "as at" date.
+   */
+  canonicalSources?: string[];
 };
 
 function formatBrackets(value: unknown): string {
@@ -36,10 +44,14 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
   {
     id: "income_tax_brackets",
     label: "Income Tax Brackets",
-    description: "NZ personal income tax brackets and rates for individuals",
+    description:
+      "NZ personal income tax brackets and rates for individuals. NOTE: brackets changed effective 31 July 2024 (composite year for 2025); the current set $15,600 / $53,500 / $78,100 / $180,000 applies from 1 April 2025 forward unless a later change supersedes it.",
     getCurrentValue: (c) => c.personalIncomeTaxBrackets,
     formatForDisplay: formatBrackets,
     configField: "personalIncomeTaxBrackets",
+    canonicalSources: [
+      "https://www.ird.govt.nz/income-tax/income-tax-for-individuals/tax-codes-and-tax-rates-for-individuals/tax-rates-for-individuals",
+    ],
   },
   {
     id: "acc_earner_levy_rate",
@@ -48,6 +60,10 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.accEarnerLevyRate,
     formatForDisplay: (v) => `$${Number(v)} per $100`,
     configField: "accEarnerLevyRate",
+    canonicalSources: [
+      "https://www.acc.co.nz/for-business/contributing-to-acc/work-account-levies/",
+      "https://www.ird.govt.nz/employing-staff/payday-filing/non-electronic-filing/acc-earners-levy",
+    ],
   },
   {
     id: "acc_earner_levy_cap",
@@ -56,6 +72,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.accEarnerLevyCap,
     formatForDisplay: formatCurrency,
     configField: "accEarnerLevyCap",
+    canonicalSources: [
+      "https://www.acc.co.nz/for-business/contributing-to-acc/work-account-levies/",
+    ],
   },
   {
     id: "student_loan_threshold",
@@ -64,6 +83,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.studentLoanRepaymentThreshold,
     formatForDisplay: formatCurrency,
     configField: "studentLoanRepaymentThreshold",
+    canonicalSources: [
+      "https://www.ird.govt.nz/student-loans/repaying-my-student-loan/student-loan-repayment-thresholds-rates",
+    ],
   },
   {
     id: "student_loan_rate",
@@ -72,6 +94,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.studentLoanRepaymentRate,
     formatForDisplay: formatPercent,
     configField: "studentLoanRepaymentRate",
+    canonicalSources: [
+      "https://www.ird.govt.nz/student-loans/repaying-my-student-loan/student-loan-repayment-thresholds-rates",
+    ],
   },
   {
     id: "kiwisaver_min_employer",
@@ -80,6 +105,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.kiwisaverMinEmployerRate,
     formatForDisplay: formatPercent,
     configField: "kiwisaverMinEmployerRate",
+    canonicalSources: [
+      "https://www.ird.govt.nz/kiwisaver/kiwisaver-employers/contributing-to-kiwisaver/employer-contributions",
+    ],
   },
   {
     id: "kiwisaver_default_employee",
@@ -88,6 +116,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.kiwisaverDefaultEmployeeRate,
     formatForDisplay: formatPercent,
     configField: "kiwisaverDefaultEmployeeRate",
+    canonicalSources: [
+      "https://www.ird.govt.nz/kiwisaver/kiwisaver-employees/contribution-rates",
+    ],
   },
   {
     id: "minimum_wage",
@@ -96,6 +127,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.minimumWage,
     formatForDisplay: (v) => `$${Number(v).toFixed(2)}/hr`,
     configField: "minimumWage",
+    canonicalSources: [
+      "https://www.employment.govt.nz/pay-and-hours/pay-and-wages/minimum-wage",
+    ],
   },
   {
     id: "minimum_wage_starting_out",
@@ -104,6 +138,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.minimumWageStartingOut,
     formatForDisplay: (v) => `$${Number(v).toFixed(2)}/hr`,
     configField: "minimumWageStartingOut",
+    canonicalSources: [
+      "https://www.employment.govt.nz/pay-and-hours/pay-and-wages/minimum-wage",
+    ],
   },
   {
     id: "esct_brackets",
@@ -112,16 +149,22 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.esctBrackets,
     formatForDisplay: formatBrackets,
     configField: "esctBrackets",
+    canonicalSources: [
+      "https://www.ird.govt.nz/kiwisaver/kiwisaver-employers/making-deductions/work-out-the-tax-rate-on-your-employer-contributions",
+    ],
   },
   {
     id: "prescribed_interest_rate",
     label: "Prescribed Interest Rate (current quarter)",
-    description: "IRD prescribed interest rate for shareholder current account loans. Published quarterly by Order in Council. Audit #77 — was a single annual scalar; now a quarterly timeline.",
+    description: "IRD prescribed interest rate for FBT low-interest loans. Published quarterly by Order in Council under the Income Tax (Fringe Benefit Tax, Interest on Loans) Regulations 1995. Audit #77 — was a single annual scalar; now a quarterly timeline.",
     // Pull the current quarter's rate from the dynamic timeline rather than
     // a per-year config field. The TaxYearConfig argument is unused here.
     getCurrentValue: () => getPrescribedInterestRate(new Date()),
     formatForDisplay: formatPercent,
     configField: "prescribedInterestRates",
+    canonicalSources: [
+      "https://www.ird.govt.nz/topics/employer-fringe-benefit-tax-paye-information/prescribed-interest-rates",
+    ],
   },
   {
     id: "gst_rate",
@@ -130,6 +173,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.gstRate,
     formatForDisplay: formatPercent,
     configField: "gstRate",
+    canonicalSources: [
+      "https://www.ird.govt.nz/gst/charging-gst",
+    ],
   },
   {
     id: "company_tax_rate",
@@ -138,6 +184,9 @@ export const REGULATORY_AREAS: RegulatoryArea[] = [
     getCurrentValue: (c) => c.incomeTaxRate.company,
     formatForDisplay: formatPercent,
     configField: "incomeTaxRate.company",
+    canonicalSources: [
+      "https://www.ird.govt.nz/income-tax/income-tax-for-businesses-and-organisations/income-tax-rates-for-businesses",
+    ],
   },
 ];
 
