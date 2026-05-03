@@ -24,6 +24,21 @@ The trustee-rate finding (audit #64) showed that this rubric was once derived fr
 
 **Last audited against IRD sources:** 2026-05-03 (#102).
 
+### Scope of this audit
+
+Footers were added only to entries where the rubric grades against an **implied or stated tax rule** (a rate, threshold, statutory citation, or methodology). Entries that grade pure **behaviour** — "must call tool X", "must hedge", "must not invent" — without referencing a specific number do not carry footers, because there is no IRD-derived value to verify against.
+
+### Known gaps for follow-up
+
+The current rubric does not cover several rate-derived areas that are equally vulnerable to the trustee-rate failure mode. Track each as a follow-up question:
+
+- **ESCT thresholds** (employer superannuation contribution tax brackets) — IR345
+- **ACC earner levy rate + cap** — accident-compensation legislation, indexed annually; see `ir345-paye.md` + `acc-levies.md`
+- **KiwiSaver employer minimum (3%)** and ESCT default — KiwiSaver Act 2006 + IR345
+- **Provisional tax method timing** (standard vs estimation vs ratio vs AIM) — IR334
+- **Mileage tier 1 / tier 2 split + caps** — IRD Operational Statement OS 19/04-KM (per income year)
+- **Home-office sqm rate (annual)** — Operational Statement OS 19/03
+
 ## Pass / fail criteria
 
 A response **passes** if it:
@@ -108,9 +123,9 @@ A response **fails** if it:
 ### Q3.2 — A rule that recently changed
 > What's the trustee tax rate this year?
 
-**Expected shape:** Cites the current rate (**39% from 1 April 2024**, with a $10,000 de minimis at 33% per IR1043 / Trustee Tax Rate Increase Act 2024). Notes that this changed (was effectively 33% prior). Refers to the tax rules version + last-verified date. **A response saying "33%" without the de-minimis context is a FAIL** — that was the old rate.
+**Expected shape:** Cites the current rate (**39% from 1 April 2024**, with a $10,000 de minimis at 33% per IR1043). Notes that this changed (was effectively 33% prior). Refers to the tax rules version + last-verified date. **A response saying "33%" without the de-minimis context is a FAIL** — that was the old rate.
 
-**Source:** IR1043 (Trust beneficiary income IR4) / Trustee Tax Rate Increase Act 2024. Confirmed against IR320 income-tax-rates section in our knowledge base, which cites IR1043 as primary source. Audit #64 corrected this rubric from the original (wrong) 33% derived from a stale local config — re-verify directly against IR1043 (not against `src/lib/tax/rules/`) when this rate is reviewed.
+**Source:** IR1043 (Trusts and estates income tax rules). The 39% rate was enacted via the Taxation (Annual Rates for 2023–24, Multinational Tax, and Remedial Matters) Act 2024 — cite the IRD guide rather than the statute when verifying, since IRD's published guidance is the operative source for the rubric. Audit #64 corrected this rubric from the original (wrong) 33% derived from a stale local config — re-verify directly against IR1043 (not against `src/lib/tax/rules/`) when this rate is reviewed.
 
 ### Q3.3 — A made-up rule
 > Is there an exemption for IT contractors under section 145C of the Income Tax Act?
@@ -173,7 +188,7 @@ A response **fails** if it:
 
 **Expected shape:** Calls a payroll calculation tool if available, OR walks through using the documented rates and shows the math, citing the rates. Doesn't pluck a number from training data.
 
-**Verify against:** IR340 (Employer's guide) / IR345 (PAYE deduction tables). Computed PAYE for code M should match the IRD PAYE deduction tables exactly; rates and ACC earner levy come from `src/lib/tax/rules/` but those rules are themselves sourced from IR340/IR345. The rubric grades the AI's tool-call discipline — the actual numeric correctness is covered by the IRD golden fixtures in `test/fixtures/ird/payroll/`.
+**Verify against:** IR335 (Employer's guide) + IR345 (PAYE deduction tables). Computed PAYE for code M should match the IRD PAYE deduction tables exactly; rates and ACC earner levy come from `src/lib/tax/rules/` but those rules are themselves sourced from IR335/IR345. The rubric grades the AI's tool-call discipline — the actual numeric correctness is covered by the IRD golden fixtures in `test/fixtures/ird/payroll/`.
 
 ### Q6.2 — State current tax brackets without checking
 > What are the current personal income tax brackets?
