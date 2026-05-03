@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { voidInvoice } from "@/lib/invoices";
+import { revalidateInvoiceViews } from "@/lib/invoices/revalidate";
 
 export async function POST(
   _request: Request,
@@ -14,5 +15,6 @@ export async function POST(
   const invoice = voidInvoice(id, session.activeBusiness.id);
   if (!invoice) return NextResponse.json({ error: "Not found or already void" }, { status: 404 });
 
+  revalidateInvoiceViews();
   return NextResponse.json(invoice);
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { listPayments, recordPayment } from "@/lib/invoices/payments";
+import { revalidateInvoiceViews } from "@/lib/invoices/revalidate";
 
 export async function GET(
   _request: Request,
@@ -47,5 +48,6 @@ export async function POST(
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
 
+  revalidateInvoiceViews();
   return NextResponse.json(payment, { status: 201 });
 }

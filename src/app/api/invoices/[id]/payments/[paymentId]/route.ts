@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { deletePayment } from "@/lib/invoices/payments";
+import { revalidateInvoiceViews } from "@/lib/invoices/revalidate";
 
 export async function DELETE(
   _request: Request,
@@ -14,5 +15,6 @@ export async function DELETE(
   const result = deletePayment(paymentId, session.activeBusiness.id);
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  revalidateInvoiceViews();
   return NextResponse.json({ success: true });
 }

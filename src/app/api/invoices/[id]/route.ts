@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getInvoice, updateInvoice, deleteInvoice } from "@/lib/invoices";
+import { revalidateInvoiceViews } from "@/lib/invoices/revalidate";
 
 export async function GET(
   _request: Request,
@@ -30,6 +31,7 @@ export async function PUT(
   const invoice = updateInvoice(id, session.activeBusiness.id, body);
   if (!invoice) return NextResponse.json({ error: "Not found or not editable" }, { status: 404 });
 
+  revalidateInvoiceViews();
   return NextResponse.json(invoice);
 }
 
@@ -66,5 +68,6 @@ export async function DELETE(
     );
   }
 
+  revalidateInvoiceViews();
   return NextResponse.json({ success: true });
 }

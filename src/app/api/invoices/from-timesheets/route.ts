@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { createInvoiceFromTimesheets } from "@/lib/invoices/from-timesheets";
+import { revalidateInvoiceViews } from "@/lib/invoices/revalidate";
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
       session.activeBusiness.id,
       body.requests
     );
+    revalidateInvoiceViews();
     return NextResponse.json(invoice, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create invoice";

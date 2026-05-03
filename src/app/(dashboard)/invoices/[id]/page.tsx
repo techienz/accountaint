@@ -109,6 +109,11 @@ export default function InvoiceDetailPage() {
     if (!confirm("Void this invoice? This cannot be undone.")) return;
     await fetch(`/api/invoices/${id}/void`, { method: "POST" });
     load();
+    // Invalidate Server-Component caches so dashboard / list / reports
+    // re-render fresh next time the user navigates there. The API also
+    // calls revalidatePath, but router.refresh() handles the
+    // soft-navigation case where this page is still mounted.
+    router.refresh();
   }
 
   async function handleDelete() {
@@ -149,6 +154,7 @@ export default function InvoiceDetailPage() {
     if (res.ok) {
       setShowPaymentForm(false);
       load();
+      router.refresh();
     }
     setPaymentSaving(false);
   }
@@ -157,6 +163,7 @@ export default function InvoiceDetailPage() {
     if (!confirm("Remove this payment?")) return;
     await fetch(`/api/invoices/${id}/payments/${paymentId}`, { method: "DELETE" });
     load();
+    router.refresh();
   }
 
   async function handleSendReminder() {
