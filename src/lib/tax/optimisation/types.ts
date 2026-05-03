@@ -22,6 +22,23 @@ export type OptimisationSnapshot = {
   recentAssetPurchases: { description: string; cost: number; date: string }[];
   totalAssetValue: number;
 
+  investmentBoost: {
+    effectiveFrom: string;
+    rate: number;
+    totalEstimate: number;
+    assumesNew: boolean;
+    assets: {
+      description: string;
+      cost: number;
+      date: string;
+      eligible: boolean;
+      ibAmount: number;
+      assumesNew: boolean;
+      reason?: string;
+    }[];
+    note: string;
+  };
+
   kiwisaver: {
     enrolled: boolean;
     employeeRate: number;
