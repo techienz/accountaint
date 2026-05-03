@@ -3,6 +3,10 @@ import { getSession } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { assets, assetDepreciation } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import {
+  parseNewClassification,
+  recomputeAssetIb,
+} from "@/lib/assets/investment-boost";
 
 export async function GET(
   _request: NextRequest,
@@ -58,6 +62,50 @@ export async function PUT(
   if (body.name) updates.name = body.name;
   if (body.category) updates.category = body.category;
   if (body.notes !== undefined) updates.notes = body.notes;
+
+  // Investment Boost classification (#148). If the user changes is_new or
+  // is_residential, recompute IB and persist the new claim. Read the
+  // current row first so we can fall back to its values for fields the
+  // PUT body didn't touch.
+  const ibTouched =
+    body.is_new_classification !== undefined ||
+    body.is_residential_building !== undefined;
+  if (ibTouched) {
+    const [current] = await db
+      .select()
+      .from(assets)
+      .where(and(eq(assets.id, id), eq(assets.business_id, business.id)));
+    if (!current) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    let nextIsNew = current.is_new;
+    let nextIsNewToNz = current.is_new_to_nz;
+    if (body.is_new_classification !== undefined) {
+      const parsed = parseNewClassification(body.is_new_classification);
+      nextIsNew = parsed.is_new;
+      nextIsNewToNz = parsed.is_new_to_nz;
+    }
+    const nextIbExcluded =
+      body.is_residential_building !== undefined
+        ? body.is_residential_building === "yes"
+        : current.ib_excluded;
+
+    const ib = recomputeAssetIb({
+      name: current.name,
+      cost: current.cost,
+      purchase_date: current.purchase_date,
+      is_new: nextIsNew,
+      is_new_to_nz: nextIsNewToNz,
+      ib_excluded: nextIbExcluded,
+    });
+
+    updates.is_new = nextIsNew;
+    updates.is_new_to_nz = nextIsNewToNz;
+    updates.ib_excluded = nextIbExcluded;
+    updates.ib_claimed_amount = ib.ib_claimed_amount;
+    updates.ib_claimed_tax_year = ib.ib_claimed_tax_year;
+  }
 
   await db
     .update(assets)

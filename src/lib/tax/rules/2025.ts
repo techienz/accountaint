@@ -98,4 +98,8 @@ export const taxYear2025: TaxYearConfig = {
   lastUpdated: "2026-05-02",
   lastVerified: "2026-05-02",
   rulesVersion: "2025.1",
+  // Investment Boost (Budget 2025) does NOT apply to TY2025 — the
+  // earliest in-force purchase date is 22 May 2025, which falls in TY2026
+  // (NZ tax year ending 31 Mar 2026). Source: https://www.ird.govt.nz/investment-boost
+  investmentBoost: null,
 };
