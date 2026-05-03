@@ -20,6 +20,7 @@ type VerifyAreaResult = {
   verified_value: string;
   status: "current" | "changed" | "uncertain";
   source_url: string;
+  as_at_date?: string;
   notes: string;
 };
 
@@ -28,21 +29,51 @@ async function verifyArea(
   areaLabel: string,
   areaDescription: string,
   currentDisplay: string,
-  taxYear: number
+  taxYear: number,
+  canonicalSources: string[] | undefined
 ): Promise<VerifyAreaResult> {
-  const prompt = `You are verifying NZ tax data for the tax year ending 31 March ${taxYear}.
+  const yearStart = `1 April ${taxYear - 1}`;
+  const yearEnd = `31 March ${taxYear}`;
 
-Check: ${areaDescription}
-Current stored value: ${currentDisplay}
+  const sourcesBlock =
+    canonicalSources && canonicalSources.length > 0
+      ? `Authoritative source(s) — consult these FIRST:
+${canonicalSources.map((u) => `- ${u}`).join("\n")}
+Only fall back to general search if these specific URLs do not load or do not cover the requested rate.`
+      : `Search official NZ government sources only: ird.govt.nz, employment.govt.nz, legislation.govt.nz, acc.co.nz.`;
 
-Search the official NZ government websites (ird.govt.nz, employment.govt.nz, legislation.govt.nz) for the current authoritative value for the ${taxYear} tax year.
+  const prompt = `You are verifying NZ tax data for the New Zealand tax year ${taxYear}, which covers ${yearStart} to ${yearEnd}.
+
+Verifying: ${areaLabel}
+Description: ${areaDescription}
+Currently stored value: ${currentDisplay}
+
+CRITICAL INSTRUCTIONS — read carefully:
+
+1. **NZ tax-year naming convention**: "tax year ${taxYear}" means the period ${yearStart} → ${yearEnd}. NOT calendar year ${taxYear}. The rate applicable to this period is what you must find.
+
+2. **Do NOT rely on prior knowledge.** Use only what you can find in *current* published sources. NZ tax rates change periodically. The Description field above flags any specific recent changes you should be aware of when interpreting search results — read it carefully before assuming a value is current.
+
+3. **Source must be current.** The page you cite must either:
+   (a) explicitly state an "as at" / "effective from" / "applies from" date that covers ${yearStart} to ${yearEnd}, OR
+   (b) explicitly state that there are no changes for the ${taxYear - 1}/${taxYear} period.
+   If neither is present — even if the page asserts a value confidently — return status="uncertain". Do NOT guess from training data or from a page without dated provenance.
+
+4. **If sources disagree**, prefer the most recent IRD/MBIE/legislation.govt.nz page that explicitly covers the requested tax year.
+
+5. **If a page shows multiple rate sets keyed by effective-from dates, return the set whose effective-from date is the latest one that is on or before ${yearEnd}.** Compare dates mechanically — do not rely on labels like "current" or "historical", which may be stale or transposed. Mention any superseded set in notes.
+
+6. **Cross-check the stored value**: after finding a verified value from a dated source, compare it to the stored value. If they match → status="current". If they differ → status="changed". If you can't find any dated source meeting requirement 3 → status="uncertain". Do NOT default to "current" because the stored value happens to look plausible.
+
+${sourcesBlock}
 
 Respond in JSON only, no markdown formatting:
 {
   "verified_value": "the value you found, formatted the same way as the current stored value",
-  "status": "current" if the stored value matches what you found, "changed" if different, "uncertain" if you couldn't confirm,
-  "source_url": "URL where you found this information",
-  "notes": "brief explanation, especially if changed or uncertain"
+  "status": "current" | "changed" | "uncertain",
+  "source_url": "specific URL where you found this — must be a page with an as-at or effective-from date",
+  "as_at_date": "the as-at / effective-from / publish date shown on that source (YYYY-MM-DD if possible, otherwise as quoted)",
+  "notes": "brief explanation. If status='changed', explain why the stored value is wrong and which date the change took effect. If 'uncertain', explain what you couldn't confirm."
 }`;
 
   let messages: Anthropic.Messages.MessageParam[] = [{ role: "user", content: prompt }];
@@ -143,7 +174,8 @@ export async function runRegulatoryCheck(taxYear?: number): Promise<string> {
         area.label,
         area.description,
         current.display,
-        year
+        year,
+        area.canonicalSources
       );
     } catch (err) {
       result = {
@@ -162,6 +194,11 @@ export async function runRegulatoryCheck(taxYear?: number): Promise<string> {
     if (status === "uncertain") areasUncertain++;
     areasChecked++;
 
+    // Fold as_at_date into notes so it's surfaced without a schema migration.
+    const combinedNotes = result.as_at_date
+      ? `[Source as at: ${result.as_at_date}] ${result.notes ?? ""}`.trim()
+      : result.notes || null;
+
     db.insert(schema.regulatoryChecks)
       .values({
         id: uuid(),
@@ -172,7 +209,7 @@ export async function runRegulatoryCheck(taxYear?: number): Promise<string> {
         verified_value: result.verified_value || null,
         status,
         source_url: result.source_url || null,
-        notes: result.notes || null,
+        notes: combinedNotes,
         applied: false,
       })
       .run();
