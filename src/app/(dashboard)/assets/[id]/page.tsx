@@ -35,6 +35,11 @@ type AssetDetail = {
   depreciation_method: string;
   depreciation_rate: number;
   is_low_value: boolean;
+  is_new: boolean | null;
+  is_new_to_nz: boolean | null;
+  ib_excluded: boolean;
+  ib_claimed_amount: number | null;
+  ib_claimed_tax_year: string | null;
   disposed: boolean;
   disposal_date: string | null;
   disposal_price: number | null;
@@ -134,6 +139,45 @@ export default function AssetDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Investment Boost (Budget 2025)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {asset.ib_claimed_amount !== null && asset.ib_claimed_tax_year ? (
+            <>
+              <p className="text-2xl font-semibold text-emerald-600">
+                {fmt(asset.ib_claimed_amount)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Investment Boost deduction claimed in tax year {asset.ib_claimed_tax_year}.
+                The remaining {fmt(asset.cost - asset.ib_claimed_amount)} depreciates as normal.
+              </p>
+            </>
+          ) : asset.ib_excluded ? (
+            <p className="text-sm text-muted-foreground">
+              Excluded from Investment Boost (e.g. residential building, trading stock).
+            </p>
+          ) : asset.is_new === null && asset.is_new_to_nz === null ? (
+            <p className="text-sm text-amber-600">
+              Not yet claimed — confirm whether this asset is NEW (or new to NZ) before claiming.
+              Update the asset's classification via the API.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Not eligible for Investment Boost. Asset must be new (or new to NZ) and acquired on
+              or after 22 May 2025.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Source: <a href="https://www.ird.govt.nz/investment-boost" target="_blank"
+              rel="noopener noreferrer" className="underline">
+              ird.govt.nz/investment-boost
+            </a>
+          </p>
+        </CardContent>
+      </Card>
 
       {showDispose && (
         <Card>

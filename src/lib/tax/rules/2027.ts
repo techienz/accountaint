@@ -79,4 +79,8 @@ export const taxYear2027: TaxYearConfig = {
   lastUpdated: "2026-04-09",
   lastVerified: "2026-04-09",
   rulesVersion: "2027.2",
+  // Investment Boost — continues from TY2026 unless a future budget changes
+  // it. Source: https://www.ird.govt.nz/investment-boost (re-verify before
+  // each new tax year).
+  investmentBoost: { rate: 0.20, effectiveFrom: "2025-05-22" },
 };

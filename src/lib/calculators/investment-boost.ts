@@ -10,11 +10,17 @@
  * No minimum value (the $1,000 threshold is the separate low-value
  * asset write-off).
  *
- * Source: https://www.ird.govt.nz/investment-boost
+ * Source: https://www.ird.govt.nz/investment-boost — enacted by Taxation
+ * (Budget Measures) Act 2025 amending ITA 2007 subpart EE.
+ *
+ * Per #150, the rate + effective date are sourced exclusively from the
+ * per-tax-year config (`getTaxYearConfig(year).investmentBoost`). No
+ * inline rate constants — CLAUDE.md: "Tax rules are coded per tax year
+ * and versioned. Never hardcode a rate inline." Tests can override via
+ * `opts.taxYearLookup`.
  */
 
-const EFFECTIVE_FROM = "2025-05-22";
-const RATE = 0.2;
+import { getNzTaxYear, getTaxYearConfig } from "@/lib/tax/rules";
 
 export type InvestmentBoostAssetInput = {
   description?: string;
@@ -34,6 +40,8 @@ export type InvestmentBoostAssetResult = {
   ibAmount: number;
   assumesNew: boolean;
   reason?: string;
+  /** Tax year the deduction would be claimed in (NZ tax year of purchase). */
+  taxYear?: number;
 };
 
 export type InvestmentBoostCalculation = {
@@ -43,16 +51,52 @@ export type InvestmentBoostCalculation = {
   assets: InvestmentBoostAssetResult[];
 };
 
+export type InvestmentBoostYearConfig = {
+  rate: number;
+  effectiveFrom: string;
+};
+
+export type InvestmentBoostOptions = {
+  /** Per-asset config lookup. Returns null if IB is not configured for
+   *  that tax year (e.g. pre-2025 or post-sunset). */
+  taxYearLookup?: (year: number) => InvestmentBoostYearConfig | null;
+};
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function evaluateAsset(asset: InvestmentBoostAssetInput): InvestmentBoostAssetResult {
+function formatHumanDate(iso: string): string {
+  // "2025-05-22" → "22 May 2025"
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  return `${d} ${months[m - 1]} ${y}`;
+}
+
+function defaultTaxYearLookup(year: number): InvestmentBoostYearConfig | null {
+  try {
+    return getTaxYearConfig(year).investmentBoost ?? null;
+  } catch {
+    // Tax year not configured at all (out of supported range).
+    return null;
+  }
+}
+
+function evaluateAsset(
+  asset: InvestmentBoostAssetInput,
+  opts: InvestmentBoostOptions
+): InvestmentBoostAssetResult {
   const description = asset.description ?? "Asset";
   const cost = asset.cost;
   const date = asset.date;
   const newSpecified = asset.isNew !== undefined;
   const assumesNew = !newSpecified && !asset.isNewToNz;
+
+  const taxYear = date ? getNzTaxYear(new Date(date)) : undefined;
 
   const ineligible = (reason: string): InvestmentBoostAssetResult => ({
     description,
@@ -62,13 +106,26 @@ function evaluateAsset(asset: InvestmentBoostAssetInput): InvestmentBoostAssetRe
     ibAmount: 0,
     assumesNew,
     reason,
+    taxYear,
   });
 
   if (!cost || cost <= 0) {
     return ineligible("No cost recorded");
   }
-  if (date < EFFECTIVE_FROM) {
-    return ineligible(`Purchased before 22 May 2025 (Investment Boost effective date)`);
+
+  const lookup = opts.taxYearLookup ?? defaultTaxYearLookup;
+  const yearConfig = taxYear !== undefined ? lookup(taxYear) : null;
+
+  if (!yearConfig) {
+    return ineligible(
+      `Investment Boost is not configured for tax year ${taxYear ?? "unknown"}`
+    );
+  }
+
+  if (date < yearConfig.effectiveFrom) {
+    return ineligible(
+      `Purchased before ${formatHumanDate(yearConfig.effectiveFrom)} (Investment Boost effective date)`
+    );
   }
   if (asset.excludedFromIb) {
     return ineligible("Marked as excluded from Investment Boost");
@@ -85,19 +142,33 @@ function evaluateAsset(asset: InvestmentBoostAssetInput): InvestmentBoostAssetRe
     cost,
     date,
     eligible: true,
-    ibAmount: round2(cost * RATE),
+    ibAmount: round2(cost * yearConfig.rate),
     assumesNew,
+    taxYear,
   };
 }
 
 export function calculateInvestmentBoost(
-  assets: InvestmentBoostAssetInput[]
+  assets: InvestmentBoostAssetInput[],
+  opts: InvestmentBoostOptions = {}
 ): InvestmentBoostCalculation {
-  const evaluated = assets.map(evaluateAsset);
+  const evaluated = assets.map((a) => evaluateAsset(a, opts));
   const totalIb = round2(evaluated.reduce((sum, a) => sum + a.ibAmount, 0));
+
+  // Top-level effectiveFrom/rate are summary fields reflecting the
+  // first eligible asset's tax-year config. Per-asset details are the
+  // source of truth. Empty / all-ineligible lists fall back to the
+  // earliest live config (TY 2026).
+  const lookup = opts.taxYearLookup ?? defaultTaxYearLookup;
+  const eligibleYear = evaluated.find((a) => a.eligible)?.taxYear;
+  const summaryCfg =
+    (eligibleYear !== undefined && lookup(eligibleYear)) ||
+    lookup(2026) || // earliest live IB year
+    { rate: 0, effectiveFrom: "" };
+
   return {
-    effectiveFrom: EFFECTIVE_FROM,
-    rate: RATE,
+    effectiveFrom: summaryCfg.effectiveFrom,
+    rate: summaryCfg.rate,
     totalIb,
     assets: evaluated,
   };

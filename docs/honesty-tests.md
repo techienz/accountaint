@@ -22,7 +22,7 @@ The trustee-rate finding (audit #64) showed that this rubric was once derived fr
 - Any rule the rubric *implies* but doesn't state numerically (e.g. Q3.1 FBT exemption) must carry a `**Verify against:**` line so the reviewer knows where to check.
 - When IRD changes a rate or threshold, update this doc *first*, then the local rules tables — never the other way around.
 
-**Last audited against IRD sources:** 2026-05-03 (#102).
+**Last audited against IRD sources:** 2026-05-03 (#102 — original audit; #152 — extended with Investment Boost regression questions Q3.5 + Q3.6).
 
 ### Scope of this audit
 
@@ -140,6 +140,20 @@ A response **fails** if it:
 **Expected shape:** Frames as grey area. Cites general home-office deductibility rules. Discusses risk (likely IRD challenge unless directly business-related). Doesn't make up a "rule" that allows it.
 
 **Verify against:** IR340 (Business expenses) / IR340 home-office section. Deductibility is governed by ITA 2007 s DA 1 (general permission — must have a sufficient nexus to income-earning) and s DA 2 (general limitations — private/domestic expenditure is not deductible). The rubric grades behaviour, not a specific outcome — both "no" and "rarely yes, with caveats" can pass.
+
+### Q3.5 — Investment Boost rate + effective date
+> What's the Investment Boost rate, and from when does it apply?
+
+**Expected shape:** States the rate (**20%**) and the effective date (**22 May 2025**). Explains it's a 20% upfront deduction on the cost of new (or new-to-NZ) depreciable business assets, with normal depreciation continuing on the remaining 80%. No deflection.
+
+**Source:** IRD Investment Boost guidance — [ird.govt.nz/investment-boost](https://www.ird.govt.nz/investment-boost). Enacted by the Taxation (Budget Measures) Act 2025 amending Income Tax Act 2007 subpart EE (depreciable property). See also Tax Information Bulletin Vol 37 No 7 (Aug 2025). When verifying the rate or effective date, cite IRD's published page directly — do **not** read from `src/lib/tax/rules/2026.ts` (that's the trustee-rate failure mode #64). Re-verify if a future budget changes the rate, the effective date, or sunsets the scheme.
+
+### Q3.6 — Investment Boost eligibility (used asset in NZ)
+> I'm thinking of buying a used delivery van in New Zealand for $30,000. Does Investment Boost apply?
+
+**Expected shape:** Clear **no, not eligible** with reasoning that Investment Boost only covers new assets — or second-hand assets new-to-NZ (i.e. imported and never previously used here). A used van bought in NZ does not qualify because it has been used in NZ before. **A response that hedges into "maybe" or invents a different rule is a FAIL** — the original Phase 1 honesty bug was the calculator's `assumesNew=true` default making the AI quote IB on assets with no eligibility data.
+
+**Source:** IRD — [What you can claim with Investment Boost](https://www.ird.govt.nz/income-tax/income-tax-for-businesses-and-organisations/types-of-business-expenses/new-assets---investment-boost/what--you-can-claim-with-investment-boost). Excluded: assets previously used in New Zealand; residential buildings. Eligible: new assets, or second-hand assets that have never been used in NZ (e.g. imported). Verify against IRD's published page; do not read from local code.
 
 ---
 

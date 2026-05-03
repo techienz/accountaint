@@ -7,6 +7,10 @@ import { assets, expenses } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { listAssets } from "@/lib/assets/register";
 import { getTaxYearConfig, getNzTaxYear } from "@/lib/tax/rules";
+import {
+  parseNewClassification,
+  recomputeAssetIb,
+} from "@/lib/assets/investment-boost";
 
 export async function GET() {
   const session = await getSession();
@@ -72,6 +76,22 @@ export async function POST(request: NextRequest) {
   const config = getTaxYearConfig(taxYear);
   const isLowValue = (cost as number) < config.lowValueAssetThreshold;
 
+  // Investment Boost classification (#148). Form value is one of
+  // yes / no / new-to-nz / dont-know; default to "don't know" so we
+  // never silently assume eligibility on an unclassified asset.
+  const ibClassification = parseNewClassification(body.is_new_classification);
+  // is_residential_building is only set for the Buildings category — the
+  // form omits it for everything else. Yes → exclude from IB.
+  const ibExcluded = body.is_residential_building === "yes";
+  const ib = recomputeAssetIb({
+    name: name as string,
+    cost: cost as number,
+    purchase_date: purchase_date as string,
+    is_new: ibClassification.is_new,
+    is_new_to_nz: ibClassification.is_new_to_nz,
+    ib_excluded: ibExcluded,
+  });
+
   const db = getDb();
   const id = crypto.randomUUID();
   const businessId = business.id;
@@ -86,6 +106,11 @@ export async function POST(request: NextRequest) {
     depreciation_method: depreciation_method as "DV" | "SL",
     depreciation_rate: depreciation_rate as number,
     is_low_value: isLowValue,
+    is_new: ibClassification.is_new,
+    is_new_to_nz: ibClassification.is_new_to_nz,
+    ib_excluded: ibExcluded,
+    ib_claimed_amount: ib.ib_claimed_amount,
+    ib_claimed_tax_year: ib.ib_claimed_tax_year,
     notes: (notes as string) || null,
   }).run();
 
@@ -140,5 +165,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ id, is_low_value: isLowValue }, { status: 201 });
+  return NextResponse.json(
+    {
+      id,
+      is_low_value: isLowValue,
+      investment_boost: {
+        eligible: ib.eligible,
+        ib_claimed_amount: ib.ib_claimed_amount,
+        ib_claimed_tax_year: ib.ib_claimed_tax_year,
+        reason: ib.reason,
+      },
+    },
+    { status: 201 }
+  );
 }

@@ -79,6 +79,18 @@ export type TaxYearConfig = {
     weekly: number;
     fortnightly: number;
   };
+  /**
+   * Investment Boost (Budget 2025). 20% upfront deduction on the cost of
+   * NEW (or new-to-NZ) depreciable business assets acquired or finished
+   * construction on/after the effective date. Per #150, the rate must
+   * never be hardcoded inline — read it from this config field via
+   * `getTaxYearConfig(year).investmentBoost`. `null` means IB is not in
+   * force for this tax year (i.e. pre-2025 or post-sunset).
+   *
+   * Source: https://www.ird.govt.nz/investment-boost — enacted by
+   * Taxation (Budget Measures) Act 2025 amending ITA 2007 subpart EE.
+   */
+  investmentBoost: { rate: number; effectiveFrom: string } | null;
   lastUpdated?: string;  // ISO date — when rules were last changed
   lastVerified?: string; // ISO date — when rules were last confirmed correct
   rulesVersion?: string; // e.g. "2027.1"

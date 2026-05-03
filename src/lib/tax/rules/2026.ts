@@ -84,4 +84,8 @@ export const taxYear2026: TaxYearConfig = {
   lastUpdated: "2026-04-09",
   lastVerified: "2026-04-09",
   rulesVersion: "2026.2",
+  // Investment Boost — 20% upfront on new (or new-to-NZ) depreciable
+  // assets acquired on/after 22 May 2025. Source: https://www.ird.govt.nz/investment-boost
+  // Enacted by Taxation (Budget Measures) Act 2025 amending ITA 2007 subpart EE.
+  investmentBoost: { rate: 0.20, effectiveFrom: "2025-05-22" },
 };

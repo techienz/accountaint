@@ -142,20 +142,29 @@ export function gatherOptimisationSnapshot(businessId: string): OptimisationSnap
 
   const sixMonthsAgo = new Date(now);
   sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-  const recentAssetPurchases = allAssets
-    .filter((a) => a.purchase_date && a.purchase_date >= sixMonthsAgo.toISOString().slice(0, 10))
-    .map((a) => ({
-      description: a.name ?? "Unknown",
-      cost: a.cost ?? 0,
-      date: a.purchase_date ?? "",
-    }));
+  const recentAssetRows = allAssets.filter(
+    (a) => a.purchase_date && a.purchase_date >= sixMonthsAgo.toISOString().slice(0, 10)
+  );
+  const recentAssetPurchases = recentAssetRows.map((a) => ({
+    description: a.name ?? "Unknown",
+    cost: a.cost ?? 0,
+    date: a.purchase_date ?? "",
+  }));
   const totalAssetValue = allAssets.reduce((sum, a) => sum + (a.cost ?? 0), 0);
 
   // Investment Boost (Budget 2025) — 20% upfront on new assets acquired
-  // on/after 22 May 2025. Schema doesn't yet track is_new (see Phase 2
-  // follow-up issue), so the calculator runs with assumesNew=true and
-  // the snapshot signals that the user must confirm.
-  const ibCalc = calculateInvestmentBoost(recentAssetPurchases);
+  // on/after 22 May 2025. Now wired to the schema flags from #148, so
+  // assumesNew is true ONLY for assets the user hasn't classified yet.
+  const ibCalc = calculateInvestmentBoost(
+    recentAssetRows.map((a) => ({
+      description: a.name ?? "Unknown",
+      cost: a.cost ?? 0,
+      date: a.purchase_date ?? "",
+      isNew: a.is_new ?? undefined,
+      isNewToNz: a.is_new_to_nz ?? undefined,
+      excludedFromIb: a.ib_excluded,
+    }))
+  );
   const investmentBoost = {
     effectiveFrom: ibCalc.effectiveFrom,
     rate: ibCalc.rate,
@@ -163,7 +172,7 @@ export function gatherOptimisationSnapshot(businessId: string): OptimisationSnap
     assumesNew: ibCalc.assets.some((a) => a.assumesNew),
     assets: ibCalc.assets,
     note:
-      "Per-asset estimate assumes each asset is NEW (or new to NZ). The user must confirm — assets previously used in NZ, or residential buildings, are not eligible. Estimates are GST-exclusive and only cover the last 6 months of asset purchases.",
+      "Per-asset estimates use the schema's is_new / is_new_to_nz / ib_excluded classification (#148). Assets where the user hasn't classified new-vs-used carry assumesNew=true — for those, instruct the user to confirm before claiming. Estimates are GST-exclusive and only cover the last 6 months of asset purchases.",
   };
 
   // KiwiSaver — find first active employee

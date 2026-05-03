@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,11 +13,16 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { ReceiptUpload } from "@/components/expenses/receipt-upload";
+import { calculateInvestmentBoost } from "@/lib/calculators/investment-boost";
+import {
+  parseNewClassification,
+  type NewClassification,
+} from "@/lib/assets/investment-boost";
 
 // Inline the categories and rates for client-side use
 const CATEGORIES = [
   "Office Equipment", "Computers", "Software", "Telecommunications",
-  "Motor Vehicles", "Building Fit-out", "Tools", "Machinery",
+  "Motor Vehicles", "Building Fit-out", "Buildings", "Tools", "Machinery",
   "Kitchen", "Electrical",
 ];
 
@@ -54,6 +59,17 @@ const RATES: Record<string, { assetType: string; dvRate: number; slRate: number 
     { assetType: "Blinds/curtains", dvRate: 0.40, slRate: 0.20 },
     { assetType: "Partitions (non-structural)", dvRate: 0.20, slRate: 0.13 },
     { assetType: "Signage", dvRate: 0.40, slRate: 0.20 },
+  ],
+  // Buildings — added for #148 so the Investment Boost rules around
+  // commercial/industrial-vs-residential exclusion can be captured at
+  // entry. NZ removed depreciation on long-life buildings in 2010-11
+  // (Budget 2010); the rates below are 0% for tax depreciation, but
+  // Investment Boost can still apply to a NEW commercial or industrial
+  // building's cost. Residential buildings are excluded from IB entirely.
+  "Buildings": [
+    { assetType: "Commercial building (new)", dvRate: 0, slRate: 0 },
+    { assetType: "Industrial building (new)", dvRate: 0, slRate: 0 },
+    { assetType: "Residential building", dvRate: 0, slRate: 0 },
   ],
   "Tools": [
     { assetType: "Power tools", dvRate: 0.40, slRate: 0.20 },
@@ -97,11 +113,17 @@ export function AssetForm({ onSubmit, initialData }: Props) {
   const [method, setMethod] = useState<"DV" | "SL">("DV");
   const [rate, setRate] = useState("");
   const [notes, setNotes] = useState(initialData?.notes || "");
+  // Investment Boost classification (#148). Default to "dont-know" so we
+  // never silently assume eligibility on an unclassified asset.
+  const [isNewClassification, setIsNewClassification] =
+    useState<NewClassification>("dont-know");
   const [saving, setSaving] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
   const assetTypes = category ? RATES[category] || [] : [];
+  const isBuilding = category === "Buildings";
+  const isResidential = isBuilding && assetType === "Residential building";
 
   // Auto-fill rate when asset type changes
   useEffect(() => {
@@ -115,6 +137,29 @@ export function AssetForm({ onSubmit, initialData }: Props) {
   }, [assetType, method]);
 
   const isLowValue = Number(cost) > 0 && Number(cost) < 1000;
+
+  // Live IB preview using the same calculator the server uses on POST.
+  // Only renders once cost/date/classification are all sensible.
+  const ibPreview = useMemo(() => {
+    const numericCost = Number(cost);
+    if (!numericCost || numericCost <= 0 || !purchaseDate) return null;
+    const { is_new, is_new_to_nz } = parseNewClassification(isNewClassification);
+    if (is_new === null && is_new_to_nz === null && !isResidential) {
+      // Don't-know branch — show a neutral nudge, no eligibility assertion.
+      return { state: "unclassified" as const };
+    }
+    const calc = calculateInvestmentBoost([
+      {
+        description: name || "Asset",
+        cost: numericCost,
+        date: purchaseDate,
+        isNew: is_new ?? undefined,
+        isNewToNz: is_new_to_nz ?? undefined,
+        excludedFromIb: isResidential,
+      },
+    ]);
+    return { state: "calculated" as const, asset: calc.assets[0] };
+  }, [cost, purchaseDate, isNewClassification, isResidential, name]);
 
   function handleReceiptSelect(file: File) {
     setReceiptFile(file);
@@ -134,6 +179,8 @@ export function AssetForm({ onSubmit, initialData }: Props) {
       depreciation_method: method,
       depreciation_rate: Number(rate),
       notes: notes || null,
+      is_new_classification: isNewClassification,
+      is_residential_building: isResidential ? "yes" : "no",
     }, receiptFile ?? undefined);
     setSaving(false);
   }
@@ -203,6 +250,47 @@ export function AssetForm({ onSubmit, initialData }: Props) {
               <Label>Depreciation Rate</Label>
               <Input type="number" step="0.001" value={rate} onChange={(e) => setRate(e.target.value)} required />
             </div>
+          </div>
+
+          <div className="space-y-2 rounded-md border border-zinc-200 dark:border-zinc-800 p-3">
+            <Label>Is this asset new?</Label>
+            <p className="text-xs text-zinc-500">
+              Investment Boost (Budget 2025) gives a 20% upfront deduction on new (or new-to-NZ) depreciable
+              assets acquired on/after 22 May 2025. Default is &ldquo;Don&rsquo;t know&rdquo; &mdash; we won&rsquo;t claim it until you confirm.
+            </p>
+            <Select
+              value={isNewClassification}
+              onValueChange={(v) => v && setIsNewClassification(v as NewClassification)}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yes">Yes — new (never used anywhere)</SelectItem>
+                <SelectItem value="no">No — used (already used in NZ)</SelectItem>
+                <SelectItem value="new-to-nz">New to NZ — imported, never used here</SelectItem>
+                <SelectItem value="dont-know">Don&rsquo;t know</SelectItem>
+              </SelectContent>
+            </Select>
+            {isResidential && (
+              <p className="text-xs text-amber-600">
+                Residential buildings are excluded from Investment Boost regardless of new/used status.
+              </p>
+            )}
+            {ibPreview?.state === "unclassified" && (
+              <p className="text-xs text-zinc-500">
+                Investment Boost not claimed until you classify this asset as new or new-to-NZ.
+              </p>
+            )}
+            {ibPreview?.state === "calculated" && ibPreview.asset.eligible && (
+              <p className="text-xs text-emerald-600">
+                ✓ Eligible for Investment Boost: ${ibPreview.asset.ibAmount.toLocaleString()} deduction
+                {ibPreview.asset.taxYear ? ` in TY${ibPreview.asset.taxYear}` : ""}.
+              </p>
+            )}
+            {ibPreview?.state === "calculated" && !ibPreview.asset.eligible && (
+              <p className="text-xs text-zinc-500">
+                Not eligible for Investment Boost: {ibPreview.asset.reason}
+              </p>
+            )}
           </div>
 
           <div>
