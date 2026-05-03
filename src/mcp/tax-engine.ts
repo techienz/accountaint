@@ -21,7 +21,7 @@ const TAX_TOOL_DESCRIPTIONS: Record<string, string> = {
   get_tax_rates: "Get current NZ tax rates for the business's tax year.",
   get_business_config: "Get business configuration (entity type, GST status, etc).",
   get_shareholder_balances: "Get shareholder current account balances with deemed dividend warnings.",
-  get_salary_dividend_advice: "Run salary/dividend optimiser for tax-optimal split.",
+  get_salary_dividend_advice: "Run salary/dividend optimiser for tax-optimal split (models company tax, personal income tax, ACC earner levy, KiwiSaver employer + ESCT, imputation credits, and a retained-earnings option).",
   get_tax_prep_summary: "Get IR4/IR3 tax return preparation status.",
   get_tax_savings_target: "Calculate monthly tax savings target.",
   get_asset_register: "Get fixed asset register with book values.",
@@ -49,6 +49,7 @@ const TAX_TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
     properties: {
       company_profit: { type: "number" },
       other_personal_income: { type: "number" },
+      kiwisaver_enrolled: { type: "boolean" },
     },
     required: ["company_profit"],
   },
