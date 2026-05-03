@@ -148,7 +148,7 @@ export const chatTools: Tool[] = [
   {
     name: "calculate_gst_return",
     description:
-      "Calculate a GST return for a specific period. Computed from posted journal entries (so it includes confirmed expenses + manual GST adjustments, not just invoices). Uses the business's configured filing basis ('invoice' or 'payments' — see get_business_config); on payments basis, GST is recognised at payment date with proportional recognition for partial payments (per IR365 / GST Act 1985 s 9). Returns totals for sales, purchases, GST collected, GST paid, net GST, and a per-line breakdown. The same numbers appear at /tax-prep/gst/[period] and /reports/gst-history.",
+      "Calculate a GST return for a specific period. Computed from posted journal entries (so it includes confirmed expenses + manual GST adjustments, not just invoices). Uses the business's configured filing basis ('invoice', 'payments', or 'hybrid' — see get_business_config). On payments basis, GST is recognised at payment date with proportional recognition for partial payments. On hybrid basis, sales use invoice basis and purchases use payments basis (per IR365 / GST Act 1985 s 9). Returns totals for sales, purchases, GST collected, GST paid, net GST, and a per-line breakdown. The same numbers appear at /tax-prep/gst/[period] and /reports/gst-history.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -1201,7 +1201,12 @@ export async function executeTool(
         from: toolInput.period_from as string,
         to: toolInput.period_to as string,
       };
-      const basis: "invoice" | "payments" = config.gst_basis === "payments" ? "payments" : "invoice";
+      const basis: import("@/lib/gst/calculator").GstBasis =
+        config.gst_basis === "payments"
+          ? "payments"
+          : config.gst_basis === "hybrid"
+            ? "hybrid"
+            : "invoice";
 
       // Migrated from invoice-based calc to ledger-based (audit #115).
       // Captures confirmed expenses + manual GST adjustments that the

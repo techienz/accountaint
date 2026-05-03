@@ -16,9 +16,17 @@ export type GstLineItem = {
   gst: number;
 };
 
+/**
+ * Filing basis. Maps to the IR365 accounting bases (s 19 GST Act 1985):
+ * - "invoice"  → recognise GST when invoice issued/received
+ * - "payments" → recognise GST when cash moves
+ * - "hybrid"   → invoice basis for sales, payments basis for purchases
+ */
+export type GstBasis = "invoice" | "payments" | "hybrid";
+
 export type GstReturnResult = {
   period: GstPeriod;
-  basis: "invoice" | "payments";
+  basis: GstBasis;
   gstRate: number;
   totalSales: number;
   totalPurchases: number;
@@ -95,7 +103,7 @@ function round2(n: number): number {
 export type GstReturnEmpty = {
   empty: true;
   reason: "no_gst_accounts" | "no_entries_in_period";
-  basis: "invoice" | "payments";
+  basis: GstBasis;
 };
 
 export type GstReturnFromLedger = GstReturnResult & {
@@ -151,9 +159,9 @@ export type GstLedgerSnapshot = {
 /**
  * Calculate GST return from journal entries. Replaces the older
  * invoice-only `calculateGstReturn` for the /tax-prep/gst flow + the
- * `calculate_gst_return` chat tool. Audit #115.
+ * `calculate_gst_return` chat tool. Audit #115 / #76.
  *
- * Captures, on both bases:
+ * Captures, on every basis:
  * - Confirmed expenses entered without an invoice (cash-out at posting)
  * - Manual GST adjustment journals
  * - Any other bookkeeping that posts to the GST accounts directly
@@ -168,10 +176,16 @@ export type GstLedgerSnapshot = {
  *   invoice.total`); other entries (expense, manual, adjustment, etc.) are
  *   treated like invoice basis since they post directly against the GST
  *   accounts at the time the cash event was recorded.
+ * - **Hybrid basis** — invoice basis for sales, payments basis for
+ *   purchases. ACCREC invoice journals contribute sales GST at posting;
+ *   ACCREC payment journals are skipped. ACCPAY invoice journals are
+ *   skipped; ACCPAY payment journals contribute purchases GST
+ *   proportionally. Direct expenses + manual journals contribute as
+ *   posted (cash-realised at posting under all bases).
  *
- * Eligibility for payments basis (IR365): turnover under $2 million.
- * The calculator does not enforce this — eligibility is the user's decision
- * and is set on the business record.
+ * Eligibility for payments / hybrid basis (IR365): turnover under
+ * $2 million. The calculator does not enforce this — eligibility is the
+ * user's decision and is set on the business record.
  *
  * Contact + invoice context is resolved from journal source_type/source_id
  * via small joins so the worksheet drilldown shows useful labels rather
@@ -180,7 +194,7 @@ export type GstLedgerSnapshot = {
 export function calculateGstReturnFromLedger(
   businessId: string,
   period: GstPeriod,
-  basis: "invoice" | "payments",
+  basis: GstBasis,
   gstRate: number
 ): GstReturnFromLedger | GstReturnEmpty {
   const snapshot = loadLedgerSnapshot(businessId, period);
@@ -319,7 +333,7 @@ function loadLedgerSnapshot(businessId: string, period: GstPeriod): GstLedgerSna
 export function computeGstReturnFromSnapshot(
   snap: GstLedgerSnapshot,
   period: GstPeriod,
-  basis: "invoice" | "payments",
+  basis: GstBasis,
   gstRate: number
 ): GstReturnFromLedger | GstReturnEmpty {
   if (!snap.gstPayableAccountId && !snap.gstReceivableAccountId) {
@@ -339,26 +353,41 @@ export function computeGstReturnFromSnapshot(
     linesByEntry.set(line.journal_entry_id, arr);
   }
 
+  // Sales-side timing: invoice basis uses invoice posting; payments basis
+  // uses cash receipt; hybrid uses invoice posting (sales = invoice basis).
+  const salesUsesPaymentsTiming = basis === "payments";
+  // Purchases-side timing: invoice basis uses invoice posting; payments
+  // basis and hybrid both use cash payment.
+  const purchasesUsesPaymentsTiming = basis === "payments" || basis === "hybrid";
+
   let gstOnSales = 0;
   let gstOnPurchases = 0;
+  let totalSales = 0;
+  let totalPurchases = 0;
   const lineItems: GstLineItem[] = [];
   let unmatchedPayments = 0;
 
   for (const entry of snap.entries) {
-    // Invoice basis: every entry contributes via its GST account postings.
-    // Payments basis: invoice journals are deferred to the payment date,
-    // so we skip them here (their GST is recognised when payment posts).
-    if (basis === "payments" && entry.source_type === "invoice") {
-      continue;
+    // ----- Invoice journals -------------------------------------------------
+    // For each side that uses payments timing, the invoice posting is deferred
+    // to its payment journal. We may still need the OTHER side from the same
+    // invoice journal (e.g. hybrid: keep ACCREC sales, defer ACCPAY purchases).
+    if (entry.source_type === "invoice") {
+      const inv = entry.source_id ? invoiceById.get(entry.source_id) : undefined;
+      // Without the source invoice we can't tell ACCREC vs ACCPAY for hybrid.
+      // Fall back to invoice-basis treatment (walk all GST lines) — the user
+      // sees a slight over-count but won't silently lose GST.
+      if (inv) {
+        const isSales = inv.type === "ACCREC";
+        if (isSales && salesUsesPaymentsTiming) continue;
+        if (!isSales && purchasesUsesPaymentsTiming) continue;
+      }
+      // Otherwise fall through to the GST-account-line walk below.
     }
 
-    if (basis === "payments" && entry.source_type === "payment" && entry.source_id) {
-      // Payments basis: derive GST proportionally from the linked invoice.
-      // IR365 — Accounting basis (Payments): GST is recognised when payment
-      // is received (sales) or made (purchases). Per GST Act 1985 s 9(2)(b)
-      // (time of supply on payments basis), recognition tracks cash, not
-      // posting. We compute the GST share = paymentAmount × gstTotal/total
-      // so partial payments recognise proportional GST.
+    // ----- Payment journals -------------------------------------------------
+    // Recognise GST proportionally on whichever side uses payments timing.
+    if (entry.source_type === "payment" && entry.source_id) {
       const payment = paymentById.get(entry.source_id);
       if (!payment) {
         unmatchedPayments++;
@@ -369,17 +398,29 @@ export function computeGstReturnFromSnapshot(
         unmatchedPayments++;
         continue;
       }
+      const isSales = invoice.type === "ACCREC";
+      const sideUsesPayments = isSales ? salesUsesPaymentsTiming : purchasesUsesPaymentsTiming;
+      if (!sideUsesPayments) continue; // Already recognised at invoice posting on this basis.
       if (invoice.total <= 0 || invoice.gst_total <= 0) {
         // Zero-rated or zero-total — no GST contribution from this payment.
+        // Box 5 (standard) / Box 6 (zero-rated) split is tracked separately
+        // in #141 — this branch keeps zero-rated out of GST totals correctly
+        // but does not yet contribute to a Box 6 total.
         continue;
       }
+      // IR365 — Accounting basis (Payments / Hybrid): GST is recognised when
+      // payment is received (sales) or made (purchases). Per GST Act 1985
+      // s 9(2)(b) (time of supply on payments basis), recognition tracks cash,
+      // not posting. GST share = payment × invoice.gst_total / invoice.total
+      // — partial payments recognise proportional GST.
       const gstShare = (payment.amount * invoice.gst_total) / invoice.total;
       const exGstShare = payment.amount - gstShare;
-      const isSales = invoice.type === "ACCREC";
       if (isSales) {
         gstOnSales += gstShare;
+        totalSales += exGstShare;
       } else {
         gstOnPurchases += gstShare;
+        totalPurchases += exGstShare;
       }
       lineItems.push({
         description: `Payment for ${invoice.invoice_number}`,
@@ -392,52 +433,63 @@ export function computeGstReturnFromSnapshot(
       continue;
     }
 
-    // All other entry kinds (and invoice-basis path): walk the GST account
-    // lines on this entry. Direct expenses, manual adjustments, payroll
-    // GST (rare), depreciation (no GST), etc. are recognised at posting.
-    // For invoice basis this also covers invoice journals — credits to GST
-    // Payable are sales GST, debits to GST Receivable are purchases GST.
+    // ----- All other entries (expense, manual, adjustment, etc.) -----------
+    // These post to the GST accounts at the time of the cash event (direct
+    // expenses) or as user-discretion adjustments (manual journals). They
+    // are recognised at posting on every basis. We also reach this branch
+    // for invoice journals on a side that uses invoice-basis timing.
     const lines = linesByEntry.get(entry.id) ?? [];
     const ctx = resolveContext(entry, invoiceById, expenseById);
+
+    // For invoice journals we know the invoice subtotal exactly — prefer that
+    // over back-derivation so mixed-rate or rounded-cents totals don't drift.
+    const invForEntry = entry.source_type === "invoice" && entry.source_id
+      ? invoiceById.get(entry.source_id)
+      : undefined;
 
     for (const line of lines) {
       if (snap.gstPayableAccountId && line.account_id === snap.gstPayableAccountId) {
         const gstAmount = line.credit - line.debit;
         if (gstAmount === 0) continue;
         gstOnSales += gstAmount;
+        const exGst = invForEntry && invForEntry.type === "ACCREC"
+          ? invForEntry.total - invForEntry.gst_total
+          : gstAmount / gstRate;
+        totalSales += exGst;
         lineItems.push({
           description: entry.description,
           contactName: ctx.contactName,
           invoiceNumber: ctx.invoiceNumber,
           type: "sales",
-          amount: round2(gstAmount / gstRate),
+          amount: round2(exGst),
           gst: round2(gstAmount),
         });
       } else if (snap.gstReceivableAccountId && line.account_id === snap.gstReceivableAccountId) {
         const gstAmount = line.debit - line.credit;
         if (gstAmount === 0) continue;
         gstOnPurchases += gstAmount;
+        const exGst = invForEntry && invForEntry.type === "ACCPAY"
+          ? invForEntry.total - invForEntry.gst_total
+          : gstAmount / gstRate;
+        totalPurchases += exGst;
         lineItems.push({
           description: entry.description,
           contactName: ctx.contactName,
           invoiceNumber: ctx.invoiceNumber,
           type: "purchases",
-          amount: round2(gstAmount / gstRate),
+          amount: round2(exGst),
           gst: round2(gstAmount),
         });
       }
     }
   }
 
-  const totalSales = round2(gstOnSales / gstRate);
-  const totalPurchases = round2(gstOnPurchases / gstRate);
-
   const result: GstReturnFromLedger = {
     period,
     basis,
     gstRate,
-    totalSales,
-    totalPurchases,
+    totalSales: round2(totalSales),
+    totalPurchases: round2(totalPurchases),
     gstOnSales: round2(gstOnSales),
     gstOnPurchases: round2(gstOnPurchases),
     netGst: round2(gstOnSales - gstOnPurchases),
@@ -447,10 +499,12 @@ export function computeGstReturnFromSnapshot(
   // Surfaces a real data-integrity caveat when payment journals couldn't be
   // matched to an invoice. Under normal operation this stays empty — the
   // basis label alone tells the user which method was used.
-  if (basis === "payments" && unmatchedPayments > 0) {
-    result.basisCaveat = `${unmatchedPayments} payment ${
-      unmatchedPayments === 1 ? "entry was" : "entries were"
-    } skipped because the linked invoice could not be found. Check the journal source links.`;
+  if (purchasesUsesPaymentsTiming || salesUsesPaymentsTiming) {
+    if (unmatchedPayments > 0) {
+      result.basisCaveat = `${unmatchedPayments} payment ${
+        unmatchedPayments === 1 ? "entry was" : "entries were"
+      } skipped because the linked invoice could not be found. Check the journal source links.`;
+    }
   }
 
   // The lineItems-empty case can occur on payments basis when only invoice

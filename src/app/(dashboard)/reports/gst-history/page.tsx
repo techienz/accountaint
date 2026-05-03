@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { calculateGstReturnFromLedger } from "@/lib/gst/calculator";
+import { calculateGstReturnFromLedger, type GstBasis } from "@/lib/gst/calculator";
 import { generateGstPeriods, formatPeriod } from "@/lib/gst/periods";
 import { getTaxYear } from "@/lib/tax/rules";
 import { ReportHeader } from "@/components/reports/report-header";
@@ -47,18 +47,33 @@ export default async function GstHistoryPage() {
   );
 
   // Pass the business's configured basis through (default invoice for legacy
-  // businesses without it set). Audit #115.
-  const basis: "invoice" | "payments" = biz.gst_basis === "payments" ? "payments" : "invoice";
+  // businesses without it set). Audit #115 / #76.
+  const basis: GstBasis =
+    biz.gst_basis === "payments" ? "payments" : biz.gst_basis === "hybrid" ? "hybrid" : "invoice";
+  const basisLabel = basis === "payments" ? "Payments" : basis === "hybrid" ? "Hybrid" : "Invoice";
   const results = periods
     .map((period) => calculateGstReturnFromLedger(biz.id, period, basis, gstRate))
     .filter((r): r is Extract<typeof r, { empty?: false }> => !("empty" in r) || !r.empty);
+  const caveats = results.flatMap((r) =>
+    r.basisCaveat ? [{ period: r.period, caveat: r.basisCaveat }] : []
+  );
 
   return (
     <>
       <ReportHeader title="GST History" />
       <p className="text-xs text-muted-foreground -mt-3 mb-3">
-        Computed from posted journal entries · <span className="font-medium">{basis === "payments" ? "Payments" : "Invoice"} basis</span>
+        Computed from posted journal entries · <span className="font-medium">{basisLabel} basis</span>
       </p>
+      {caveats.length > 0 && (
+        <ul className="-mt-2 mb-3 space-y-1 text-xs text-amber-700">
+          {caveats.map((c, i) => (
+            <li key={i}>
+              <span className="font-medium">{formatPeriod(c.period.from, c.period.to)}:</span>{" "}
+              {c.caveat}
+            </li>
+          ))}
+        </ul>
+      )}
       <Card>
         <CardContent className="pt-6">
           {results.length === 0 ? (

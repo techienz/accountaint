@@ -250,6 +250,154 @@ describe("edge cases", () => {
   });
 });
 
+describe("hybrid basis — sales = invoice basis, purchases = payments basis", () => {
+  it("ACCREC invoice in Q1 (no payment yet) → hybrid recognises sales GST in Q1", () => {
+    const snap: GstLedgerSnapshot = emptySnapshot({
+      entries: [
+        { id: "je-inv-1", date: "2026-02-15", description: "Sales invoice INV-001", source_type: "invoice", source_id: "inv-1" },
+      ],
+      lines: [
+        { journal_entry_id: "je-inv-1", account_id: GST_PAYABLE_ID, debit: 0, credit: 150 },
+      ],
+      invoices: [{ id: "inv-1", invoice_number: "INV-001", type: "ACCREC", total: 1150, gst_total: 150, contact_name: "Acme" }],
+    });
+
+    const r = computeGstReturnFromSnapshot(snap, PERIOD_Q1, "hybrid", RATE);
+    if ("empty" in r && r.empty) throw new Error("unexpected empty");
+    expect(r.gstOnSales).toBe(150);
+    expect(r.gstOnPurchases).toBe(0);
+    expect(r.totalSales).toBe(1000);
+  });
+
+  it("ACCPAY invoice in Q1 (no payment yet) → hybrid recognises NO purchase GST", () => {
+    const snap: GstLedgerSnapshot = emptySnapshot({
+      entries: [
+        { id: "je-inv-1", date: "2026-02-15", description: "Purchase invoice BILL-001", source_type: "invoice", source_id: "inv-1" },
+      ],
+      lines: [
+        { journal_entry_id: "je-inv-1", account_id: GST_RECEIVABLE_ID, debit: 60, credit: 0 },
+      ],
+      invoices: [{ id: "inv-1", invoice_number: "BILL-001", type: "ACCPAY", total: 460, gst_total: 60, contact_name: "Vendor" }],
+    });
+
+    const r = computeGstReturnFromSnapshot(snap, PERIOD_Q1, "hybrid", RATE);
+    // No purchase GST yet (deferred to payment), no sales GST → empty result.
+    expect("empty" in r && r.empty).toBe(true);
+  });
+
+  it("ACCPAY invoice posted Q1 + paid Q2 → hybrid recognises purchase GST in Q2", () => {
+    const snap: GstLedgerSnapshot = emptySnapshot({
+      entries: [
+        { id: "je-pay-1", date: "2026-04-10", description: "Payment made", source_type: "payment", source_id: "pay-1" },
+      ],
+      payments: [{ id: "pay-1", invoice_id: "inv-1", date: "2026-04-10", amount: 460 }],
+      invoices: [{ id: "inv-1", invoice_number: "BILL-001", type: "ACCPAY", total: 460, gst_total: 60, contact_name: "Vendor" }],
+    });
+
+    const r = computeGstReturnFromSnapshot(snap, PERIOD_Q2, "hybrid", RATE);
+    if ("empty" in r && r.empty) throw new Error("unexpected empty");
+    expect(r.gstOnPurchases).toBe(60);
+    expect(r.gstOnSales).toBe(0);
+  });
+
+  it("ACCREC payment in Q2 (invoice was Q1) → hybrid does NOT double-count sales", () => {
+    // Sales already recognised at invoice posting in Q1 under hybrid.
+    // The payment journal in Q2 must not also contribute.
+    const snap: GstLedgerSnapshot = emptySnapshot({
+      entries: [
+        { id: "je-pay-1", date: "2026-04-10", description: "Payment received", source_type: "payment", source_id: "pay-1" },
+      ],
+      payments: [{ id: "pay-1", invoice_id: "inv-1", date: "2026-04-10", amount: 1150 }],
+      invoices: [{ id: "inv-1", invoice_number: "INV-001", type: "ACCREC", total: 1150, gst_total: 150, contact_name: "Acme" }],
+    });
+
+    const r = computeGstReturnFromSnapshot(snap, PERIOD_Q2, "hybrid", RATE);
+    expect("empty" in r && r.empty).toBe(true);
+  });
+
+  it("hybrid mixes both: sales invoice in Q1 + purchase payment in Q1 → both recognised", () => {
+    const snap: GstLedgerSnapshot = emptySnapshot({
+      entries: [
+        { id: "je-inv-s", date: "2026-02-10", description: "Sales invoice INV-S", source_type: "invoice", source_id: "inv-s" },
+        { id: "je-pay-p", date: "2026-02-15", description: "Payment made", source_type: "payment", source_id: "pay-p" },
+      ],
+      lines: [
+        { journal_entry_id: "je-inv-s", account_id: GST_PAYABLE_ID, debit: 0, credit: 150 },
+      ],
+      payments: [{ id: "pay-p", invoice_id: "inv-p", date: "2026-02-15", amount: 460 }],
+      invoices: [
+        { id: "inv-s", invoice_number: "INV-S", type: "ACCREC", total: 1150, gst_total: 150, contact_name: "Cust" },
+        { id: "inv-p", invoice_number: "INV-P", type: "ACCPAY", total: 460, gst_total: 60, contact_name: "Sup" },
+      ],
+    });
+
+    const r = computeGstReturnFromSnapshot(snap, PERIOD_Q1, "hybrid", RATE);
+    if ("empty" in r && r.empty) throw new Error("unexpected empty");
+    expect(r.gstOnSales).toBe(150);
+    expect(r.gstOnPurchases).toBe(60);
+    expect(r.netGst).toBe(90);
+  });
+
+  it("hybrid + direct expense → recognised in same period (cash-realised)", () => {
+    const snap: GstLedgerSnapshot = emptySnapshot({
+      entries: [
+        { id: "je-exp-1", date: "2026-02-20", description: "Expense: Mitre 10", source_type: "expense", source_id: "exp-1" },
+      ],
+      lines: [
+        { journal_entry_id: "je-exp-1", account_id: GST_RECEIVABLE_ID, debit: 30, credit: 0 },
+      ],
+      expenses: [{ id: "exp-1", vendor: "Mitre 10" }],
+    });
+
+    const r = computeGstReturnFromSnapshot(snap, PERIOD_Q1, "hybrid", RATE);
+    if ("empty" in r && r.empty) throw new Error("unexpected empty");
+    expect(r.gstOnPurchases).toBe(30);
+  });
+});
+
+describe("totalSales / totalPurchases — direct sum, not back-derived from gstOnSales/rate", () => {
+  it("payments basis with non-15% effective ratio: totalSales matches summed exGstShare exactly", () => {
+    // Invoice total $1,100, GST $100 → effective rate 100/1100 = 9.09%, NOT 15%.
+    // Back-deriving totalSales from gstOnSales / 0.15 would give 666.67 (wrong).
+    // The correct totalSales = $1,100 - $100 = $1,000.
+    const snap: GstLedgerSnapshot = emptySnapshot({
+      entries: [
+        { id: "je-pay-1", date: "2026-04-10", description: "Payment received", source_type: "payment", source_id: "pay-1" },
+      ],
+      payments: [{ id: "pay-1", invoice_id: "inv-1", date: "2026-04-10", amount: 1100 }],
+      invoices: [{ id: "inv-1", invoice_number: "MIXED-1", type: "ACCREC", total: 1100, gst_total: 100, contact_name: "Cust" }],
+    });
+
+    const r = computeGstReturnFromSnapshot(snap, PERIOD_Q2, "payments", RATE);
+    if ("empty" in r && r.empty) throw new Error("unexpected empty");
+    expect(r.gstOnSales).toBe(100);
+    expect(r.totalSales).toBe(1000); // direct sum, not 100/0.15 = 666.67
+    expect(r.lineItems[0].amount).toBe(1000);
+    expect(r.lineItems[0].gst).toBe(100);
+  });
+
+  it("invoice basis on an invoice journal: totalSales uses invoice.subtotal, not back-derivation", () => {
+    // Same mixed-rate fixture but on invoice basis. The invoice journal's GST
+    // line credits GST Payable $100. With the invoice-aware fix, totalSales
+    // should use the invoice's subtotal (total - gst_total = 1000) rather
+    // than back-deriving 100 / 0.15 = 666.67.
+    const snap: GstLedgerSnapshot = emptySnapshot({
+      entries: [
+        { id: "je-inv-1", date: "2026-02-15", description: "Sales invoice MIXED-1", source_type: "invoice", source_id: "inv-1" },
+      ],
+      lines: [
+        { journal_entry_id: "je-inv-1", account_id: GST_PAYABLE_ID, debit: 0, credit: 100 },
+      ],
+      invoices: [{ id: "inv-1", invoice_number: "MIXED-1", type: "ACCREC", total: 1100, gst_total: 100, contact_name: "Cust" }],
+    });
+
+    const r = computeGstReturnFromSnapshot(snap, PERIOD_Q1, "invoice", RATE);
+    if ("empty" in r && r.empty) throw new Error("unexpected empty");
+    expect(r.gstOnSales).toBe(100);
+    expect(r.totalSales).toBe(1000);
+  });
+});
+
 describe("invariants", () => {
   it("netGst on payments basis = gstOnSales − gstOnPurchases (no rounding drift)", () => {
     const snap: GstLedgerSnapshot = emptySnapshot({
