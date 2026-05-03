@@ -115,20 +115,26 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
       : "/api/businesses";
     const method = isEditing ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
 
-    const result = await res.json();
-    if (result.error) {
-      setError(result.error);
-      setLoading(false);
-    } else {
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || result.error) {
+        setError(result.error || `Save failed (${res.status})`);
+        return;
+      }
+
       if (onSaved) onSaved();
       router.refresh();
       if (!isEditing) router.push("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setLoading(false);
     }
   }
 
