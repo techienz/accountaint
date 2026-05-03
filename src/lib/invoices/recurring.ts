@@ -6,6 +6,7 @@ import { sendInvoiceEmail } from "./email";
 import { nextRunDate, type RecurrenceFrequency } from "./recurrence";
 import { todayNZ } from "@/lib/utils/dates";
 import { getStandardGstRate } from "@/lib/tax/rules";
+import { revalidateInvoiceViews } from "./revalidate";
 
 export type RecurringScheduleInput = {
   contact_id: string;
@@ -300,6 +301,14 @@ export async function runDueSchedules(today: string = todayNZ()) {
       errors.push(`${s.id}: ${err instanceof Error ? err.message : err}`);
       skipped++;
     }
+  }
+
+  // Cron-driven invoice creation — invalidate dashboard / list / report
+  // caches once per run if anything was actually generated. Keeps the
+  // user's view fresh on next navigation rather than waiting for a
+  // manual refresh.
+  if (generated > 0) {
+    revalidateInvoiceViews();
   }
 
   return { generated, skipped, autoSent, errors };

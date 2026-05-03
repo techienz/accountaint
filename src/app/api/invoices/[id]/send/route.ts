@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getInvoice, markInvoiceSent } from "@/lib/invoices";
 import { sendInvoiceEmail } from "@/lib/invoices/email";
+import { revalidateInvoiceViews } from "@/lib/invoices/revalidate";
 
 /**
  * Send an invoice email.
@@ -40,7 +41,12 @@ export async function POST(
   // First send: transition draft → sent and post journal. Re-sends are no-ops here.
   if (invoice.status === "draft") {
     const updated = markInvoiceSent(id, businessId);
-    if (updated) invoice = updated;
+    if (updated) {
+      invoice = updated;
+      // Status change + journal posted — invalidate dashboard / list /
+      // reports caches so they show the new sent state immediately.
+      revalidateInvoiceViews();
+    }
   }
 
   // Send email (always, including on re-send). Failures don't roll back status.

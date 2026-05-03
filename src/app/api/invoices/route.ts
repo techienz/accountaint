@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { listInvoices, createInvoice } from "@/lib/invoices";
+import { revalidateInvoiceViews } from "@/lib/invoices/revalidate";
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -52,5 +53,6 @@ export async function POST(request: Request) {
     line_items: body.line_items,
   });
 
+  revalidateInvoiceViews();
   return NextResponse.json(invoice, { status: 201 });
 }
