@@ -2471,11 +2471,17 @@ export async function executeTool(
 
     case "get_employees": {
       const { listEmployees } = await import("@/lib/employees");
+      const { redactEmployeeForChat } = await import("@/lib/ai/sanitise");
       const emps = listEmployees(businessId);
       const includeInactive = toolInput.include_inactive as boolean;
       const filtered = includeInactive ? emps : emps.filter((e) => e.is_active);
+      // Issue #69 — strip unbounded-PII fields (email/phone/DOB/address/IRD/
+      // emergency contact) before handing to the model. Server-side handlers
+      // look these up by id and don't need the chat to see plaintext values.
+      // The employee's own `name` is then anonymised by sanitiseXeroData
+      // because the chat route added employees to the sanitisation map.
       return sanitiseXeroData(
-        filtered.map((e) => ({
+        filtered.map((e) => redactEmployeeForChat({
           id: e.id,
           name: e.name,
           email: e.email,

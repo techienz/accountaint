@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildSanitisationMap, sanitise } from "@/lib/ai/sanitise";
+import {
+  buildSanitisationMap,
+  sanitise,
+  sanitiseXeroData,
+  redactEmployeeForChat,
+} from "@/lib/ai/sanitise";
 import type { XeroContact } from "@/lib/xero/types";
 
 /**
@@ -87,6 +92,124 @@ describe("PII sanitisation coverage", () => {
       const out = sanitise("Sent IRD 123-456-789 from 12-3456-7890123-00", map);
       expect(out).toContain("[IRD ***]");
       expect(out).toContain("[Bank ***]");
+    });
+  });
+
+  // Issue #69 — employee names + employee PII fields were leaking past
+  // sanitiseXeroData because employees were never added to the map and
+  // unbounded-PII fields (DOB, address, emergency contact) were returned
+  // verbatim to the model.
+  describe("employee names (#69)", () => {
+    it("substitutes the employee name when included in the map", () => {
+      const map = buildSanitisationMap(contacts, [], ["Jane Doe"]);
+      const out = sanitise("Pay Jane Doe $5000 this fortnight", map);
+      expect(out).not.toContain("Jane Doe");
+      expect(out).toContain("Employee A");
+    });
+
+    it("anonymises distinct employees with sequential labels", () => {
+      const map = buildSanitisationMap(contacts, [], ["Jane Doe", "Sam Smith"]);
+      expect(sanitise("Jane Doe", map)).toBe("Employee A");
+      expect(sanitise("Sam Smith", map)).toBe("Employee B");
+    });
+
+    it("does not collide with shareholder labels when both are passed", () => {
+      const map = buildSanitisationMap(contacts, ["Kurt Bellian"], ["Jane Doe"]);
+      expect(sanitise("Kurt Bellian", map)).toBe("Shareholder A");
+      expect(sanitise("Jane Doe", map)).toBe("Employee A");
+    });
+
+    it("regression: passing employeeNames=undefined leaks the employee name", () => {
+      const correctMap = buildSanitisationMap(contacts, [], ["Jane Doe"]);
+      const brokenMap = buildSanitisationMap(contacts);
+      expect(sanitise("Jane Doe", correctMap)).not.toContain("Jane Doe");
+      expect(sanitise("Jane Doe", brokenMap)).toContain("Jane Doe");
+    });
+
+    it("piping a get_employees-shape record through sanitiseXeroData with the employee in the map produces no plaintext name", () => {
+      // Same shape get_employees returns (subset). All string leaves get
+      // sanitised via the recursive walk in sanitiseXeroData.
+      const empRecord = {
+        id: "emp_1",
+        name: "Jane Doe",
+        job_title: "Senior accountant working with Jane Doe",
+      };
+      const map = buildSanitisationMap(contacts, [], ["Jane Doe"]);
+      const out = sanitiseXeroData(empRecord, map);
+      expect(out.name).toBe("Employee A");
+      expect(out.job_title).not.toContain("Jane Doe");
+    });
+  });
+
+  describe("redactEmployeeForChat — strip unbounded-PII fields (#69)", () => {
+    // The model doesn't need raw email / phone / DOB / address /
+    // emergency-contact fields to give payroll or tax advice. Server-side
+    // handlers (payslip-email, etc.) look these up by employee_id from the
+    // DB. Returning them to Claude is pure leak surface.
+    const fullEmployee = {
+      id: "emp_1",
+      name: "Jane Doe",
+      email: "jane@example.com",
+      phone: "021-555-1234",
+      job_title: "Senior accountant",
+      department: "Finance",
+      ird_number: "123-456-789",
+      date_of_birth: "1990-04-15",
+      address: "12 Some Road, Wellington",
+      emergency_contact_name: "John Doe",
+      emergency_contact_phone: "022-555-9999",
+      start_date: "2023-01-15",
+      end_date: null,
+      employment_type: "full_time",
+      pay_type: "salary",
+      pay_rate: 80000,
+      hours_per_week: 40,
+      tax_code: "M",
+      kiwisaver_enrolled: true,
+      kiwisaver_employee_rate: 0.03,
+      kiwisaver_employer_rate: 0.03,
+      has_student_loan: false,
+      leave_annual_balance: 4,
+      leave_sick_balance: 5,
+      is_active: true,
+    };
+
+    it("nullifies email, phone, address, DOB, IRD, emergency contact name + phone", () => {
+      const r = redactEmployeeForChat(fullEmployee);
+      expect(r.email).toBeNull();
+      expect(r.phone).toBeNull();
+      expect(r.address).toBeNull();
+      expect(r.date_of_birth).toBeNull();
+      expect(r.ird_number).toBeNull();
+      expect(r.emergency_contact_name).toBeNull();
+      expect(r.emergency_contact_phone).toBeNull();
+    });
+
+    it("preserves the fields the model needs to give advice", () => {
+      const r = redactEmployeeForChat(fullEmployee);
+      expect(r.id).toBe("emp_1");
+      expect(r.name).toBe("Jane Doe"); // anonymisation happens later via sanitiseXeroData
+      expect(r.job_title).toBe("Senior accountant");
+      expect(r.department).toBe("Finance");
+      expect(r.pay_rate).toBe(80000);
+      expect(r.tax_code).toBe("M");
+      expect(r.kiwisaver_enrolled).toBe(true);
+      expect(r.is_active).toBe(true);
+    });
+
+    it("end-to-end: redact then sanitise → no plaintext PII in the result tree", () => {
+      const map = buildSanitisationMap(contacts, [], ["Jane Doe"]);
+      const out = sanitiseXeroData(redactEmployeeForChat(fullEmployee), map);
+      const json = JSON.stringify(out);
+      expect(json).not.toContain("Jane Doe");
+      expect(json).not.toContain("jane@example.com");
+      expect(json).not.toContain("021-555-1234");
+      expect(json).not.toContain("12 Some Road");
+      expect(json).not.toContain("1990-04-15");
+      expect(json).not.toContain("John Doe");
+      expect(json).not.toContain("022-555-9999");
+      // IRD number is also stripped (was redacted to null, regardless of regex).
+      expect(json).not.toContain("123-456-789");
     });
   });
 });
