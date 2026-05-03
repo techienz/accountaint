@@ -4,6 +4,7 @@ import { decrypt } from "@/lib/encryption";
 import { findOrCreateContactByName } from "@/lib/contacts";
 import { createInvoice } from "./index";
 import { getStandardGstRate } from "@/lib/tax/rules";
+import { formatDateNzDash } from "@/lib/utils/format-date-nz";
 
 type TimesheetInvoiceRequest = {
   work_contract_id: string;
@@ -119,12 +120,12 @@ export async function createInvoiceFromTimesheets(
     const totalMinutes = entries.reduce((sum, e) => sum + e.duration_minutes, 0);
     const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
 
-    // Date range for description
+    // Date range for description (rendered in DD-MM-YYYY for NZ users)
     const dates = entries.map((e) => e.date).sort();
     const dateRange =
       dates.length === 1
-        ? dates[0]
-        : `${dates[0]} to ${dates[dates.length - 1]}`;
+        ? formatDateNzDash(dates[0])
+        : `${formatDateNzDash(dates[0])} to ${formatDateNzDash(dates[dates.length - 1])}`;
 
     const hourlyRate = entries[0].hourly_rate ?? contract.hourly_rate ?? 0;
 
