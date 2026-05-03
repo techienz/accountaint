@@ -85,6 +85,13 @@
       "when": 1777842671811,
       "tag": "0011_zero_voided_amount_due",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1777843865009,
+      "tag": "0012_rwt_acc_dividend_flags",
+      "breakpoints": true
     }
   ]
 }

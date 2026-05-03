@@ -343,6 +343,8 @@ export default async function DashboardPage() {
     gst_filing_period: biz.gst_filing_period as "monthly" | "2monthly" | "6monthly" | undefined,
     gst_2monthly_cycle: biz.gst_2monthly_cycle as "A" | "B" | undefined,
     tax_agent_linked: biz.tax_agent_linked,
+    pays_dividends: biz.pays_dividends,
+    has_shareholder_employee: biz.has_shareholder_employee,
     has_employees: biz.has_employees,
     paye_frequency: biz.paye_frequency as "monthly" | "twice_monthly" | undefined,
     provisional_tax_method: biz.provisional_tax_method as "standard" | "estimation" | "aim" | undefined,

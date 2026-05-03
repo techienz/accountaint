@@ -24,6 +24,8 @@ export type CreateBusinessInput = {
   fbt_registered?: boolean;
   pays_contractors?: boolean;
   tax_agent_linked?: boolean;
+  pays_dividends?: boolean;
+  has_shareholder_employee?: boolean;
 };
 
 export type UpdateBusinessInput = Partial<CreateBusinessInput> & {
@@ -58,6 +60,8 @@ export function createBusiness(userId: string, input: CreateBusinessInput) {
       fbt_registered: input.fbt_registered ?? false,
       pays_contractors: input.pays_contractors ?? false,
       tax_agent_linked: input.tax_agent_linked ?? false,
+      pays_dividends: input.pays_dividends ?? false,
+      has_shareholder_employee: input.has_shareholder_employee ?? false,
       balance_date: input.balance_date || "03-31",
       gst_registered: input.gst_registered ?? false,
       gst_filing_period: input.gst_filing_period,
@@ -162,6 +166,8 @@ export function updateBusiness(userId: string, businessId: string, input: Update
   if (input.fbt_registered !== undefined) updates.fbt_registered = input.fbt_registered;
   if (input.pays_contractors !== undefined) updates.pays_contractors = input.pays_contractors;
   if (input.tax_agent_linked !== undefined) updates.tax_agent_linked = input.tax_agent_linked;
+  if (input.pays_dividends !== undefined) updates.pays_dividends = input.pays_dividends;
+  if (input.has_shareholder_employee !== undefined) updates.has_shareholder_employee = input.has_shareholder_employee;
   if (input.invoice_prefix !== undefined) updates.invoice_prefix = input.invoice_prefix;
   if (input.payment_instructions !== undefined) updates.payment_instructions = input.payment_instructions || null;
   if (input.invoice_custom_footer !== undefined) updates.invoice_custom_footer = input.invoice_custom_footer || null;

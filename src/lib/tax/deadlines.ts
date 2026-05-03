@@ -33,12 +33,27 @@ export type DeadlineInput = {
    * (most self-filers using the app as their accountant). Issue #163.
    */
   tax_agent_linked?: boolean;
+  /**
+   * True if the business pays dividends to shareholders. Triggers RWT
+   * deadline emission: IR15P monthly (20th of next month) and IR15S
+   * annual reconciliation (31 May). Issue #165.
+   */
+  pays_dividends?: boolean;
+  /**
+   * True if a shareholder-employee draws salary from the business. ACC
+   * Work Account levy is liable on those earnings even with no PAYE
+   * staff. Issue #168.
+   */
+  has_shareholder_employee?: boolean;
   dateRange: { from: Date; to: Date };
 };
 
 export type DeadlineType =
   | "gst" | "provisional_tax" | "income_tax" | "paye"
   | "ir3" | "ir4" | "ir6" | "ir7"
+  | "imputation_return"          // IR4J — companies, alongside IR4 (#166)
+  | "rwt_dividend_payment"       // IR15P — monthly when dividends paid (#165)
+  | "rwt_annual_reconciliation"  // IR15S — annual, 31 May (#165)
   | "annual_return" | "acc_levy" | "fbt" | "schedular_payment";
 
 export type Deadline = {
@@ -135,6 +150,20 @@ export function calculateDeadlines(config: DeadlineInput): Deadline[] {
     deadlines.push(...calculateIncomeTaxFilingDeadlines(config, ty, from, to));
   }
 
+  // IR4J Imputation Credit Account return — companies only, same date
+  // as IR4 filing. Issue #166.
+  if (config.entity_type === "company") {
+    for (let ty = startTaxYear - 1; ty <= endTaxYear; ty++) {
+      deadlines.push(...calculateImputationReturnDeadlines(config, ty, from, to));
+    }
+  }
+
+  // RWT on dividends: IR15P (monthly, 20th of next month) + IR15S
+  // (annual, 31 May). Only when the business pays dividends. Issue #165.
+  if (config.pays_dividends) {
+    deadlines.push(...calculateRwtDeadlines(from, to));
+  }
+
   // PAYE deadlines
   if (config.has_employees && config.paye_frequency) {
     deadlines.push(...calculatePayeDeadlines(config, from, to));
@@ -143,8 +172,9 @@ export function calculateDeadlines(config: DeadlineInput): Deadline[] {
   // Annual return (companies only)
   deadlines.push(...calculateAnnualReturnDeadlines(config, from, to));
 
-  // ACC levy (all businesses)
-  deadlines.push(...calculateAccLevyDeadlines(from, to));
+  // ACC Work Account levy — only payers (employers, sole traders, OR
+  // companies with a shareholder-employee drawing salary). Issue #168.
+  deadlines.push(...calculateAccLevyDeadlines(config, from, to));
 
   // FBT deadlines
   if (config.fbt_registered) {
@@ -507,7 +537,21 @@ function calculateAnnualReturnDeadlines(
   return deadlines;
 }
 
+/**
+ * ACC Work Account levy. Per ACC's published guidance:
+ *   - Employers are invoiced ~July, due 30 days later (~early August)
+ *   - Sole traders / shareholder-employees are invoiced ~September,
+ *     due 30 days later (~early October)
+ *
+ * Sole-director companies with NO shareholder-employee and NO PAYE
+ * staff don't get a Work Account levy at all (the director's earner
+ * levy is collected through PAYE if they're paid as such; otherwise
+ * via IR3 if they take dividends only).
+ *
+ * Issue #168.
+ */
 function calculateAccLevyDeadlines(
+  config: DeadlineInput,
   from: Date,
   to: Date
 ): Deadline[] {
@@ -515,14 +559,140 @@ function calculateAccLevyDeadlines(
   const startYear = from.getFullYear();
   const endYear = to.getFullYear();
 
+  // Determine payer type. Skip emission entirely if the business has
+  // no liable earners.
+  const isEmployer = config.has_employees;
+  const isSelfEmployedLike =
+    config.entity_type === "sole_trader" || config.has_shareholder_employee;
+
+  if (!isEmployer && !isSelfEmployedLike) {
+    return deadlines;
+  }
+
+  // Pick the timing that applies. If both apply (rare: company with
+  // PAYE staff AND a shareholder-employee), prefer the employer cadence
+  // since the levy bill is mostly driven by Employer Monthly Schedule
+  // earnings.
+  const dueMonth = isEmployer ? 7 /* August (next-month) */ : 9 /* October */;
+  const description = isEmployer
+    ? "ACC Work Account levy (employer) — due ~30 days from July invoice"
+    : "ACC Work Account levy (self-employed / shareholder-employee) — due ~30 days from September invoice";
+
   for (let year = startYear; year <= endYear; year++) {
-    const dueDate = new Date(year, 8, 30); // September 30
+    // Approximate due date — actual date is 30 days from invoice issue
+    // and varies. Use day 7 of the month after invoicing as a sensible
+    // default. Users can confirm against their actual invoice once
+    // received.
+    const dueDate = new Date(year, dueMonth, 7);
     if (isInRange(dueDate, from, to)) {
       deadlines.push({
         type: "acc_levy",
-        description: `ACC levy payment due`,
+        description,
         dueDate: formatDate(dueDate),
         taxYear: getNzTaxYear(dueDate),
+      });
+    }
+  }
+
+  return deadlines;
+}
+
+/**
+ * IR4J Imputation Credit Account return — filed alongside the company's
+ * IR4 income tax return. Same due date as IR4 (7 July without tax-agent
+ * extension, 31 March with). Issue #166.
+ *
+ * Source: IRD imputation page confirms IR4J is filed as part of the
+ * company income tax return. Specific IR4J due date isn't published on
+ * IRD HTML pages — bundled-with-IR4 inferred from "filed as part of".
+ */
+function calculateImputationReturnDeadlines(
+  config: DeadlineInput,
+  taxYear: number,
+  from: Date,
+  to: Date
+): Deadline[] {
+  const deadlines: Deadline[] = [];
+  if (config.entity_type !== "company") return deadlines;
+
+  const { month: balMonth } = parseBalanceDate(config.balance_date);
+
+  // Same date logic as the IR4 filing (calculateIncomeTaxFilingDeadlines).
+  let standardFilingMonth = balMonth + 4;
+  let standardFilingYear = taxYear;
+  if (standardFilingMonth > 12) {
+    standardFilingMonth -= 12;
+    standardFilingYear += 1;
+  }
+
+  const dueDate = config.tax_agent_linked
+    ? makeWorkingDate(standardFilingYear + 1, 3, 31)
+    : makeWorkingDate(standardFilingYear, standardFilingMonth, 7);
+  const descriptionSuffix = config.tax_agent_linked ? " — tax agent extension" : "";
+
+  if (isInRange(dueDate, from, to)) {
+    deadlines.push({
+      type: "imputation_return",
+      description: `IR4J Imputation Credit Account return for ${taxYear} tax year${descriptionSuffix}`,
+      dueDate: formatDate(dueDate),
+      taxYear,
+    });
+  }
+
+  return deadlines;
+}
+
+/**
+ * RWT on dividends — emitted when the business pays dividends. Per
+ * NZ withholding-tax convention (canonical source: IR284 PDF, not on
+ * public IRD HTML):
+ *
+ *   - IR15P: monthly RWT payment, due 20th of the month following any
+ *     month a dividend was paid. Emit a recurring monthly placeholder
+ *     so the user is reminded to file IF they paid a dividend that
+ *     month — actual filing is event-driven.
+ *   - IR15S: annual reconciliation, due 31 May for the tax year ending
+ *     31 March.
+ *
+ * Issue #165. TODO: cite IR284 section/page in code comment once PDF
+ * has been cross-checked.
+ */
+function calculateRwtDeadlines(from: Date, to: Date): Deadline[] {
+  const deadlines: Deadline[] = [];
+  const startYear = from.getFullYear();
+  const endYear = to.getFullYear() + 1;
+
+  // Monthly IR15P: 20th of every month within the date range.
+  for (let year = startYear; year <= endYear; year++) {
+    for (let month = 1; month <= 12; month++) {
+      const dueDate = makeWorkingDate(year, month, 20);
+      if (isInRange(dueDate, from, to)) {
+        // Reference the previous month — payment due 20th of THIS month
+        // covers dividends paid in the PREVIOUS month.
+        const prevMonth = month === 1 ? 12 : month - 1;
+        const prevYear = month === 1 ? year - 1 : year;
+        deadlines.push({
+          type: "rwt_dividend_payment",
+          description: `RWT on dividends (IR15P) — pay any RWT withheld on dividends paid in ${MONTH_NAMES[prevMonth - 1]} ${prevYear}`,
+          dueDate: formatDate(dueDate),
+          taxYear: getNzTaxYear(dueDate),
+        });
+      }
+    }
+  }
+
+  // Annual IR15S: 31 May for tax year ending 31 March (year+1).
+  for (let year = startYear; year <= endYear; year++) {
+    const dueDate = makeWorkingDate(year, 5, 31);
+    if (isInRange(dueDate, from, to)) {
+      // Tax year for an IR15S filed 31 May YYYY covers the period ending
+      // 31 March YYYY.
+      const reconciledTaxYear = year;
+      deadlines.push({
+        type: "rwt_annual_reconciliation",
+        description: `RWT annual reconciliation (IR15S) for ${reconciledTaxYear} tax year`,
+        dueDate: formatDate(dueDate),
+        taxYear: reconciledTaxYear,
       });
     }
   }
