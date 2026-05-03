@@ -4,7 +4,7 @@ import type { MessageParam, ContentBlockParam, Tool } from "@anthropic-ai/sdk/re
 import { chatTools, executeTool } from "./tools";
 import { desanitise } from "./sanitise";
 import { retrieveKnowledge } from "@/lib/knowledge/retriever";
-import { searchChatMemory } from "@/lib/ai/memory";
+import { searchChatMemory, formatMemoryChunks } from "@/lib/ai/memory";
 import { recordChatAction } from "./audit";
 import type { SanitisationMap, StreamEvent } from "./types";
 import { allMcpTools } from "@/mcp/all-tools";
@@ -210,9 +210,7 @@ export function streamChat(options: StreamChatOptions): ReadableStream<Uint8Arra
             `### ${r.guideCode} — ${r.section}\n${r.content}${r.sourceUrl ? `\nSource: ${r.sourceUrl}` : ""}`
         );
 
-        const memoryChunks = memoryResults.map(
-          (r) => `[${r.createdAt.slice(0, 10)}] ${r.role}: ${r.content}`
-        );
+        const memoryChunks = formatMemoryChunks(memoryResults, sanitisationMap);
 
         const systemPrompt = buildSystemPrompt(business, knowledgeChunks, memoryChunks, options.pageContext);
         let currentMessages = [...messages];
