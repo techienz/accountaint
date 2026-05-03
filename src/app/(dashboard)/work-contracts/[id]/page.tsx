@@ -31,6 +31,7 @@ type WorkContract = {
   document_id: string | null;
   project_name: string | null;
   project_code: string | null;
+  show_project_info_on_invoice: boolean;
   billing_cycle: string | null;
   invoice_due_day: number | null;
   invoice_send_day: number | null;
@@ -164,6 +165,7 @@ export default function WorkContractDetailPage() {
       wt_rate: Number(form.get("wt_rate")),
       project_name: form.get("project_name") || null,
       project_code: form.get("project_code") || null,
+      show_project_info_on_invoice: form.get("show_project_info_on_invoice") === "on",
       billing_cycle: form.get("billing_cycle") || null,
       invoice_send_day: Number(form.get("invoice_send_day")) || null,
       invoice_due_day: Number(form.get("invoice_due_day")) || null,
@@ -424,6 +426,22 @@ export default function WorkContractDetailPage() {
                 <div>
                   <Label htmlFor="project_code">Project Code</Label>
                   <Input id="project_code" name="project_code" defaultValue={contract.project_code ?? ""} placeholder="e.g. DT-2026-041" />
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="show_project_info_on_invoice"
+                  name="show_project_info_on_invoice"
+                  defaultChecked={contract.show_project_info_on_invoice ?? false}
+                  className="mt-1 h-4 w-4 rounded border-input"
+                />
+                <div>
+                  <Label htmlFor="show_project_info_on_invoice">Show project info on invoices</Label>
+                  <p className="text-xs text-muted-foreground">
+                    When checked, invoices generated from this contract&apos;s timesheets display the project name and code in the PDF and line item descriptions. Useful for clients who require project references on their POs.
+                  </p>
                 </div>
               </div>
 

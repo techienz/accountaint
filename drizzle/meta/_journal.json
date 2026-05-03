@@ -71,6 +71,13 @@
       "when": 1777837863330,
       "tag": "0009_tax_agent_linked",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1777839633582,
+      "tag": "0010_show_project_info_on_invoice",
+      "breakpoints": true
     }
   ]
 }

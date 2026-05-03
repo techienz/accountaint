@@ -70,6 +70,7 @@ export default function NewWorkContractPage() {
       wt_rate: Number(form.get("wt_rate")),
       project_name: form.get("project_name") || null,
       project_code: form.get("project_code") || null,
+      show_project_info_on_invoice: form.get("show_project_info_on_invoice") === "on",
       notes: form.get("notes") || null,
     };
 
@@ -242,6 +243,21 @@ export default function NewWorkContractPage() {
               <div>
                 <Label htmlFor="project_code">Project Code</Label>
                 <Input id="project_code" name="project_code" placeholder="e.g. DT-2026-041" />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                id="show_project_info_on_invoice"
+                name="show_project_info_on_invoice"
+                className="mt-1 h-4 w-4 rounded border-input"
+              />
+              <div>
+                <Label htmlFor="show_project_info_on_invoice">Show project info on invoices</Label>
+                <p className="text-xs text-muted-foreground">
+                  When checked, invoices generated from this contract&apos;s timesheets will display the project name and code in the PDF and line item descriptions. Useful for clients who require project references on their POs.
+                </p>
               </div>
             </div>
 

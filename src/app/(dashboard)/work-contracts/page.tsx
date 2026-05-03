@@ -28,6 +28,8 @@ type WorkContract = {
   end_date: string | null;
   wt_rate: number;
   status: string;
+  project_name: string | null;
+  project_code: string | null;
 };
 
 type Summary = {
@@ -155,6 +157,7 @@ export default function WorkContractsPage() {
         <TableHeader>
           <TableRow>
             <TableHead>Client</TableHead>
+            <TableHead>Project</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Rate</TableHead>
             <TableHead className="text-right">Weekly Hrs</TableHead>
@@ -172,6 +175,20 @@ export default function WorkContractsPage() {
                 <span className="font-medium text-primary">
                   {c.client_name}
                 </span>
+              </TableCell>
+              <TableCell className="text-sm">
+                {c.project_name || c.project_code ? (
+                  <div>
+                    {c.project_name && <div>{c.project_name}</div>}
+                    {c.project_code && (
+                      <div className="text-xs text-muted-foreground font-mono">
+                        {c.project_code}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
               </TableCell>
               <TableCell>{typeLabels[c.contract_type] || c.contract_type}</TableCell>
               <TableCell>{formatRate(c)}</TableCell>
@@ -193,7 +210,7 @@ export default function WorkContractsPage() {
           ))}
           {contracts.length === 0 && (
             <TableRow>
-              <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                 No work contracts yet. Add your first contract to start tracking.
               </TableCell>
             </TableRow>
