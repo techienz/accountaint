@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { decrypt } from "@/lib/encryption";
+import { formatDateNzDash } from "@/lib/utils/format-date-nz";
 
 type PdfInvoiceData = {
   invoice: {
@@ -123,8 +124,8 @@ export function renderInvoiceHtml(data: PdfInvoiceData): string {
     </div>
     <table class="meta-table">
       <tr><td class="meta-label">Number</td><td><strong>${escapeHtml(invoice.invoice_number)}</strong></td></tr>
-      <tr><td class="meta-label">Date</td><td>${invoice.date}</td></tr>
-      <tr><td class="meta-label">Due Date</td><td>${invoice.due_date}</td></tr>
+      <tr><td class="meta-label">Date</td><td>${formatDateNzDash(invoice.date)}</td></tr>
+      <tr><td class="meta-label">Due Date</td><td>${formatDateNzDash(invoice.due_date)}</td></tr>
       ${invoice.reference ? `<tr><td class="meta-label">Reference</td><td>${escapeHtml(invoice.reference)}</td></tr>` : ""}
     </table>
   </div>
