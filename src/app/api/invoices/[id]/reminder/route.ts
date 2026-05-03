@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { sendInvoiceReminder } from "@/lib/invoices/email";
 import { getInvoice } from "@/lib/invoices";
+import { revalidateInvoiceViews } from "@/lib/invoices/revalidate";
 
 /**
  * Manually send a payment-reminder email for an unpaid invoice. The auto
@@ -31,5 +32,8 @@ export async function POST(
   }
 
   const updated = getInvoice(id, businessId);
+  // Reminder mutates last_reminder_sent_at + reminder_count on the invoice;
+  // any list/dashboard surfacing "last reminded" goes stale otherwise.
+  revalidateInvoiceViews();
   return NextResponse.json({ ...updated, reminded_to: email || updated?.contact_email || null });
 }
