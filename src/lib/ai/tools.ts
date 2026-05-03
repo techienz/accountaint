@@ -243,7 +243,7 @@ export const chatTools: Tool[] = [
   {
     name: "get_salary_dividend_advice",
     description:
-      "Run the salary/dividend optimiser to find the tax-optimal split between shareholder salary and dividends.",
+      "Run the salary/dividend optimiser to find the tax-optimal split between shareholder salary, dividends, and retained earnings. Models company tax, personal income tax, ACC earner levy, KiwiSaver employer contribution, ESCT, and imputation credits.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -254,6 +254,10 @@ export const chatTools: Tool[] = [
         other_personal_income: {
           type: "number",
           description: "Shareholder's other personal income (rental, interest, etc.)",
+        },
+        kiwisaver_enrolled: {
+          type: "boolean",
+          description: "Whether the shareholder-employee is enrolled in KiwiSaver. When true, models 3% employer + 3% employee contributions and ESCT on the employer portion.",
         },
       },
       required: ["company_profit"],
@@ -1371,14 +1375,13 @@ export async function executeTool(
     case "get_salary_dividend_advice": {
       const companyProfit = (toolInput.company_profit as number) || 0;
       const otherIncome = (toolInput.other_personal_income as number) || 0;
-      const taxYear = getNzTaxYear(new Date());
-      const config = getTaxYearConfig(taxYear);
+      const kiwisaverEnrolled = Boolean(toolInput.kiwisaver_enrolled);
 
       const result = optimiseSalaryDividend({
         companyProfit,
-        companyTaxRate: config.incomeTaxRate.company,
-        personalBrackets: config.personalIncomeTaxBrackets,
         otherPersonalIncome: otherIncome,
+        taxYear: getNzTaxYear(new Date()),
+        kiwisaverEnrolled,
       });
 
       return {

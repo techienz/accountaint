@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { optimiseSalaryDividend } from "@/lib/tax/salary-dividend-optimiser";
-import { getTaxYearConfig, getNzTaxYear } from "@/lib/tax/rules";
+import { getNzTaxYear } from "@/lib/tax/rules";
 
 export async function GET(
   request: NextRequest,
@@ -20,15 +20,14 @@ export async function GET(
   const url = new URL(request.url);
   const companyProfit = Number(url.searchParams.get("company_profit") || 100000);
   const otherIncome = Number(url.searchParams.get("other_income") || 0);
-
-  const taxYear = getNzTaxYear(new Date());
-  const config = getTaxYearConfig(taxYear);
+  const kiwisaverEnrolled =
+    url.searchParams.get("kiwisaver_enrolled") === "true";
 
   const result = optimiseSalaryDividend({
     companyProfit,
-    companyTaxRate: config.incomeTaxRate.company,
-    personalBrackets: config.personalIncomeTaxBrackets,
     otherPersonalIncome: otherIncome,
+    taxYear: getNzTaxYear(new Date()),
+    kiwisaverEnrolled,
   });
 
   return NextResponse.json(result);
