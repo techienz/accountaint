@@ -36,6 +36,7 @@ type Business = {
   incorporation_date?: string | null;
   fbt_registered?: boolean;
   pays_contractors?: boolean;
+  tax_agent_linked?: boolean;
   invoice_prefix?: string | null;
   payment_instructions?: string | null;
   invoice_custom_footer?: string | null;
@@ -102,6 +103,7 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
         : undefined,
       fbt_registered: formData.get("fbt_registered") === "on",
       pays_contractors: formData.get("pays_contractors") === "on",
+      tax_agent_linked: formData.get("tax_agent_linked") === "on",
       ...(isEditing ? {
         invoice_prefix: (formData.get("invoice_prefix") as string) || "INV",
         payment_instructions: (formData.get("payment_instructions") as string) || undefined,
@@ -390,6 +392,21 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
                 className="h-4 w-4 rounded border-input"
               />
               <Label htmlFor="pays_contractors">Pay contractors (schedular payments)</Label>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="tax_agent_linked"
+                  defaultChecked={business?.tax_agent_linked ?? false}
+                  name="tax_agent_linked"
+                  className="h-4 w-4 rounded border-input"
+                />
+                <Label htmlFor="tax_agent_linked">Linked to a registered NZ tax agent</Label>
+              </div>
+              <p className="text-xs text-muted-foreground pl-6">
+                If you have a registered tax agent doing your returns, you get the IRD extension of time. Without one (most self-filers), IR4/IR3 is due 7 July and terminal tax due 7 February. With one, IR4/IR3 due 31 March and terminal tax due 7 April. Leave unchecked if you self-file.
+              </p>
             </div>
           </div>
 

@@ -1,0 +1,1 @@
+ALTER TABLE `businesses` ADD `tax_agent_linked` integer DEFAULT false NOT NULL;

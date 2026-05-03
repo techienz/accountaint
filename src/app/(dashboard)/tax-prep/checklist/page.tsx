@@ -64,6 +64,7 @@ export default async function FilingChecklistPage() {
       business.gst_filing_period as DeadlineInput["gst_filing_period"],
     gst_2monthly_cycle:
       business.gst_2monthly_cycle as DeadlineInput["gst_2monthly_cycle"],
+    tax_agent_linked: business.tax_agent_linked,
     has_employees: business.has_employees,
     paye_frequency: business.paye_frequency as DeadlineInput["paye_frequency"],
     provisional_tax_method:

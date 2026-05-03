@@ -59,6 +59,13 @@ export const businesses = sqliteTable("businesses", {
   pays_contractors: integer("pays_contractors", { mode: "boolean" })
     .notNull()
     .default(false),
+  // True if linked to a registered NZ tax agent for the extension-of-time
+  // scheme. Without one, IR4/IR3 due 7 July (year+1) and terminal tax
+  // due 7 February (year+1). With one, IR4/IR3 due 31 March (year+2) and
+  // terminal tax due 7 April (year+1). Issue #163.
+  tax_agent_linked: integer("tax_agent_linked", { mode: "boolean" })
+    .notNull()
+    .default(false),
   next_resolution_number: integer("next_resolution_number").notNull().default(1),
   auto_invoice_reminders: integer("auto_invoice_reminders", { mode: "boolean" })
     .notNull()
