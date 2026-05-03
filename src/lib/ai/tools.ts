@@ -6,6 +6,7 @@ import { calculateDeadlines } from "@/lib/tax/deadlines";
 import { getTaxYear, getNzTaxYear, getTaxYearConfig, getStandardGstRate } from "@/lib/tax/rules";
 import { calculateGstReturn, type GstPeriod } from "@/lib/gst/calculator";
 import { sanitiseXeroData } from "./sanitise";
+import { wrapBankMemo, wrapBankMerchant } from "./untrusted";
 import type { SanitisationMap } from "./types";
 import type {
   XeroReport,
@@ -1911,6 +1912,8 @@ export async function executeTool(
       // names are anonymised before reaching Claude. Unknown merchants pass
       // through unchanged (best effort — the sanitisation map is built from
       // contacts + shareholders only).
+      // Audit #94 — wrap memo/merchant in <bank_memo>/<bank_merchant> fences
+      // so an attacker-crafted Akahu memo can't act as a directive.
       const { sanitise: sanitiseStr } = await import("@/lib/ai/sanitise");
       const statusFilter = (toolInput.status as string) || "unmatched";
       const limit = (toolInput.limit as number) || 20;
@@ -1924,9 +1927,11 @@ export async function executeTool(
         .map((t) => ({
           id: t.id,
           date: t.date,
-          description: sanitiseStr(decrypt(t.description), sanitisationMap),
+          description: wrapBankMemo(sanitiseStr(decrypt(t.description), sanitisationMap)),
           amount: t.amount,
-          merchant: t.merchant_name ? sanitiseStr(decrypt(t.merchant_name), sanitisationMap) : null,
+          merchant: t.merchant_name
+            ? wrapBankMerchant(sanitiseStr(decrypt(t.merchant_name), sanitisationMap))
+            : null,
           status: t.reconciliation_status,
         }));
       return { transactions: txns, count: txns.length };

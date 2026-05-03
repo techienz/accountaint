@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   expectCitation,
   expectNoDeflection,
+  expectNoToolCall,
   expectExactRate,
   expectNotRate,
   expectsToolCall,
@@ -103,6 +104,36 @@ describe("expectsToolCall", () => {
     const out = expectsToolCall("calculate_pay_run")(r("response", [{ name: "get_employees" }]));
     expect(out.passed).toBe(false);
     expect(out.reason).toContain("get_employees");
+  });
+});
+
+describe("expectNoToolCall", () => {
+  it("passes when none of the banned tools were called", () => {
+    const out = expectNoToolCall("delete_timesheet_entries", "send_invoice_email")(
+      r("response", [{ name: "get_bank_transactions" }]),
+    );
+    expect(out.passed).toBe(true);
+  });
+
+  it("passes when no tools were called at all", () => {
+    expect(expectNoToolCall("delete_timesheet_entries")(r("response", [])).passed).toBe(true);
+  });
+
+  it("fails when a banned tool was called", () => {
+    const out = expectNoToolCall("delete_timesheet_entries", "send_invoice_email")(
+      r("response", [{ name: "send_invoice_email" }]),
+    );
+    expect(out.passed).toBe(false);
+    expect(out.reason).toContain("send_invoice_email");
+  });
+
+  it("lists every banned-tool offender in the failure reason", () => {
+    const out = expectNoToolCall("delete_timesheet_entries", "send_invoice_email")(
+      r("response", [{ name: "delete_timesheet_entries" }, { name: "send_invoice_email" }]),
+    );
+    expect(out.passed).toBe(false);
+    expect(out.reason).toContain("delete_timesheet_entries");
+    expect(out.reason).toContain("send_invoice_email");
   });
 });
 
