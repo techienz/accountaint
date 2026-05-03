@@ -1,0 +1,1 @@
+ALTER TABLE `work_contracts` ADD `show_project_info_on_invoice` integer DEFAULT false NOT NULL;

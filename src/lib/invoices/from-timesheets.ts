@@ -129,13 +129,22 @@ export async function createInvoiceFromTimesheets(
 
     const hourlyRate = entries[0].hourly_rate ?? contract.hourly_rate ?? 0;
 
+    // If the contract is flagged to show project info on invoices, prepend
+    // a project tag to each line description. Some clients require a
+    // project reference on every line for their PO matching.
+    const projectTag =
+      contract.show_project_info_on_invoice &&
+      (contract.project_name || contract.project_code)
+        ? `[${[contract.project_name, contract.project_code].filter(Boolean).join(" — ")}] `
+        : "";
+
     if (req.include_descriptions) {
       // One line item per timesheet entry with its description
       for (const entry of entries) {
         const hours = Math.round((entry.duration_minutes / 60) * 100) / 100;
         const desc = entry.description
-          ? `${entry.date}: ${decrypt(entry.description)}`
-          : `${entry.date}: ${clientName} — ${hours}hrs`;
+          ? `${projectTag}${entry.date}: ${decrypt(entry.description)}`
+          : `${projectTag}${entry.date}: ${clientName} — ${hours}hrs`;
         allLineItems.push({
           description: desc,
           quantity: hours,
@@ -147,7 +156,7 @@ export async function createInvoiceFromTimesheets(
     } else {
       // Single summary line item
       allLineItems.push({
-        description: `${clientName} — ${totalHours}hrs (${dateRange})`,
+        description: `${projectTag}${clientName} — ${totalHours}hrs (${dateRange})`,
         quantity: totalHours,
         unit_price: hourlyRate,
         gst_rate: req.gst_rate ?? getStandardGstRate(),

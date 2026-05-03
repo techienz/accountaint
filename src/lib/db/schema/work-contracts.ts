@@ -35,6 +35,16 @@ export const workContracts = sqliteTable("work_contracts", {
   expiry_notified_at: integer("expiry_notified_at", { mode: "timestamp" }),
   project_name: text("project_name"),
   project_code: text("project_code"),
+  // When true and an invoice is created from this contract's timesheets,
+  // the invoice's PDF includes the project_name + project_code (so clients
+  // who require project references on their POs can see them). Defaults
+  // false — most invoices don't need it. Set per contract because a
+  // single business may have some clients who want it and some who don't.
+  show_project_info_on_invoice: integer("show_project_info_on_invoice", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   billing_cycle: text("billing_cycle", {
     enum: ["weekly", "fortnightly", "monthly", "on_completion"],
   }),
