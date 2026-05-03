@@ -106,7 +106,25 @@ export async function POST(request: NextRequest) {
     })
     .filter((n): n is string => !!n);
 
-  const sanitisationMap = buildSanitisationMap(contacts, shareholderNames);
+  // Employee names — issue #69. Same mistake the shareholder fix closed:
+  // get_employees + create_pay_run returned plaintext employee names because
+  // no employee was in the sanitisation map.
+  const employees = db
+    .select({ name: schema.employees.name })
+    .from(schema.employees)
+    .where(eq(schema.employees.business_id, business.id))
+    .all();
+  const employeeNames = employees
+    .map((e) => {
+      try { return decrypt(e.name); } catch { return null; }
+    })
+    .filter((n): n is string => !!n);
+
+  const sanitisationMap = buildSanitisationMap(
+    contacts,
+    shareholderNames,
+    employeeNames
+  );
 
   // Sanitise user message
   const sanitisedMessage = sanitise(trimmedMessage, sanitisationMap);

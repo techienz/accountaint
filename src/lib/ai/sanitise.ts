@@ -4,13 +4,15 @@ import type { SanitisationMap } from "./types";
 const CUSTOMER_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((l) => `Customer ${l}`);
 const SUPPLIER_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((l) => `Supplier ${l}`);
 const SHAREHOLDER_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((l) => `Shareholder ${l}`);
+const EMPLOYEE_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((l) => `Employee ${l}`);
 
 const IRD_REGEX = /\b\d{2,3}-?\d{3}-?\d{3}\b/g;
 const BANK_REGEX = /\b\d{2}-?\d{4}-?\d{7}-?\d{2,3}\b/g;
 
 export function buildSanitisationMap(
   contacts: XeroContact[],
-  shareholderNames?: string[]
+  shareholderNames?: string[],
+  employeeNames?: string[]
 ): SanitisationMap {
   const originalToAnon = new Map<string, string>();
   const anonToOriginal = new Map<string, string>();
@@ -41,6 +43,19 @@ export function buildSanitisationMap(
       if (!name || originalToAnon.has(name)) continue;
       const label = SHAREHOLDER_LABELS[shIdx] || `Shareholder ${shIdx + 1}`;
       shIdx++;
+      originalToAnon.set(name, label);
+      anonToOriginal.set(label, name);
+    }
+  }
+
+  // Anonymise employee names — issue #69. Without this the model received
+  // employee names verbatim from get_employees / pay-run tools.
+  if (employeeNames) {
+    let empIdx = 0;
+    for (const name of employeeNames) {
+      if (!name || originalToAnon.has(name)) continue;
+      const label = EMPLOYEE_LABELS[empIdx] || `Employee ${empIdx + 1}`;
+      empIdx++;
       originalToAnon.set(name, label);
       anonToOriginal.set(label, name);
     }
@@ -81,6 +96,41 @@ export function desanitise(text: string, map: SanitisationMap): string {
   }
 
   return result;
+}
+
+/**
+ * Strip unbounded-PII fields from an employee record before passing it to
+ * the chat model (issue #69). The chat doesn't need raw email / phone /
+ * DOB / address / IRD / emergency-contact data to give payroll or tax
+ * advice — server-side handlers (payslip email, tax filing, etc.) look
+ * these up by `id` from the DB. Returning them to Claude is pure leak
+ * surface: `emergency_contact_name` in particular is another person's
+ * name that's never in any sanitisation map.
+ *
+ * The employee's own `name` is kept here and anonymised downstream by
+ * `sanitiseXeroData` once the employee is in the sanitisation map.
+ */
+export function redactEmployeeForChat<
+  T extends {
+    email?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    date_of_birth?: string | null;
+    ird_number?: string | null;
+    emergency_contact_name?: string | null;
+    emergency_contact_phone?: string | null;
+  }
+>(employee: T): T {
+  return {
+    ...employee,
+    email: null,
+    phone: null,
+    address: null,
+    date_of_birth: null,
+    ird_number: null,
+    emergency_contact_name: null,
+    emergency_contact_phone: null,
+  };
 }
 
 export function sanitiseXeroData<T>(data: T, map: SanitisationMap): T {
