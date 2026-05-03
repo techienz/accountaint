@@ -43,4 +43,18 @@ describe("DeleteInvoiceResult shape", () => {
       expect(r.status).toBe("void");
     }
   });
+
+  it("has_payments carries amount_paid and payment_count", () => {
+    const r: DeleteInvoiceResult = {
+      ok: false,
+      reason: "has_payments",
+      amount_paid: 250.5,
+      payment_count: 2,
+    };
+    expect(r.ok).toBe(false);
+    if (r.ok === false && r.reason === "has_payments") {
+      expect(r.amount_paid).toBe(250.5);
+      expect(r.payment_count).toBe(2);
+    }
+  });
 });

@@ -296,7 +296,8 @@ export function updateInvoice(
 export type DeleteInvoiceResult =
   | { ok: true }
   | { ok: false; reason: "not_found" }
-  | { ok: false; reason: "not_deletable"; status: InvoiceStatus };
+  | { ok: false; reason: "not_deletable"; status: InvoiceStatus }
+  | { ok: false; reason: "has_payments"; amount_paid: number; payment_count: number };
 
 /**
  * Hard-delete an invoice and everything that hangs off it. Allowed for
@@ -346,6 +347,24 @@ export function deleteInvoice(
     };
   }
 
+  // Partial-payment guard: a sent/overdue invoice can have payments recorded
+  // even if status isn't yet "paid". Deleting silently nukes those payment
+  // records — refuse and require the user to reverse the payments first
+  // (or use Void, which preserves the audit trail of the round-trip).
+  const allPayments = db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.invoice_id, id))
+    .all();
+  if (allPayments.length > 0 || existing.amount_paid > 0) {
+    return {
+      ok: false,
+      reason: "has_payments",
+      amount_paid: existing.amount_paid,
+      payment_count: allPayments.length,
+    };
+  }
+
   const lineItems = db
     .select()
     .from(schema.invoiceLineItems)
@@ -368,19 +387,24 @@ export function deleteInvoice(
   // 2. Delete journal entries for any payment records first. payments
   //    will be cascade-deleted with the invoice in step 5, but their
   //    journal entries (source_type='payment') would be orphaned.
-  const allPayments = db
-    .select()
-    .from(schema.payments)
-    .where(eq(schema.payments.invoice_id, id))
-    .all();
+  //    Note: with the partial-payment guard above, allPayments should be
+  //    empty here — but the sweep is kept defensively in case payments
+  //    exist that don't show on amount_paid (e.g. fully-reversed pairs).
+  //    Delete ALL journal entries (active + reversed) for each payment
+  //    by source criteria, not just `findActiveJournalForSource` which
+  //    filters is_reversed=false and would leave orphan reversal entries
+  //    pointing at deleted payment ids.
   for (const p of allPayments) {
-    const paymentJournal = findActiveJournalForSource(businessId, "payment", p.id);
-    if (paymentJournal) {
-      db.delete(schema.journalEntries)
-        .where(eq(schema.journalEntries.id, paymentJournal.id))
-        .run();
-      // journal_lines cascade-delete via FK
-    }
+    db.delete(schema.journalEntries)
+      .where(
+        and(
+          eq(schema.journalEntries.business_id, businessId),
+          eq(schema.journalEntries.source_type, "payment"),
+          eq(schema.journalEntries.source_id, p.id)
+        )
+      )
+      .run();
+    // journal_lines cascade-delete via FK
   }
 
   // 3. Delete the invoice's own active journal entries (and any reversals).

@@ -50,6 +50,14 @@ export async function DELETE(
     if (result.reason === "not_found") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    if (result.reason === "has_payments") {
+      return NextResponse.json(
+        {
+          error: `Cannot delete: invoice has ${result.payment_count} payment record(s) totalling $${result.amount_paid.toFixed(2)}. Reverse the payments first, or use Void to keep the audit trail.`,
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       {
         error: `Cannot delete invoice with status '${result.status}'. Paid invoices and voided invoices are protected.`,
