@@ -26,11 +26,19 @@ export type DeadlineInput = {
   incorporation_date?: string; // YYYY-MM-DD
   fbt_registered?: boolean;
   pays_contractors?: boolean;
+  /**
+   * True if linked to a registered NZ tax agent for the extension-of-time
+   * scheme. Affects IR4/IR3 filing dates (7 July → 31 March) and
+   * terminal tax payment dates (7 February → 7 April). Default false
+   * (most self-filers using the app as their accountant). Issue #163.
+   */
+  tax_agent_linked?: boolean;
   dateRange: { from: Date; to: Date };
 };
 
 export type DeadlineType =
   | "gst" | "provisional_tax" | "income_tax" | "paye"
+  | "ir3" | "ir4" | "ir6" | "ir7"
   | "annual_return" | "acc_levy" | "fbt" | "schedular_payment";
 
 export type Deadline = {
@@ -114,9 +122,17 @@ export function calculateDeadlines(config: DeadlineInput): Deadline[] {
     }
   }
 
-  // Income tax (terminal tax) deadlines
+  // Income tax (terminal tax PAYMENT) deadlines
   for (let ty = startTaxYear - 1; ty <= endTaxYear; ty++) {
     deadlines.push(...calculateTerminalTaxDeadlines(config, ty, from, to));
+  }
+
+  // Income tax RETURN FILING deadlines (IR3 / IR4 / IR6 / IR7).
+  // Distinct from terminal tax payment — the form filing has its own
+  // deadline (7 July or 31 March with extension), separate from when the
+  // money is due (7 February or 7 April with extension). Issue #163.
+  for (let ty = startTaxYear - 1; ty <= endTaxYear; ty++) {
+    deadlines.push(...calculateIncomeTaxFilingDeadlines(config, ty, from, to));
   }
 
   // PAYE deadlines
@@ -287,9 +303,14 @@ function calculateTerminalTaxDeadlines(
 
   const { month: balMonth } = parseBalanceDate(config.balance_date);
 
-  // NZ terminal tax is due on the 7th day, 11 months after the balance date.
+  // NZ terminal tax is due:
+  //   - 7th day, 11 months after the balance date  (no tax-agent extension)
+  //   - 7 April of (taxYear + 1) for March balance  (with tax-agent extension)
   // For March (month 3) balance date, tax year 2026:
-  //   3 + 11 = 14 -> month 2 of next year = 7 February 2027.
+  //   no extension: 3 + 11 = 14 -> month 2 of next year = 7 February 2027.
+  //   extension:    7 April 2027.
+  // The extension shifts the date by 2 months for ALL balance dates.
+  // Issue #163.
   let terminalMonth = balMonth + 11;
   let terminalYear = taxYear;
   if (terminalMonth > 12) {
@@ -297,12 +318,88 @@ function calculateTerminalTaxDeadlines(
     terminalYear += 1;
   }
 
+  if (config.tax_agent_linked) {
+    terminalMonth += 2;
+    if (terminalMonth > 12) {
+      terminalMonth -= 12;
+      terminalYear += 1;
+    }
+  }
+
   const dueDate = makeWorkingDate(terminalYear, terminalMonth, 7);
 
   if (isInRange(dueDate, from, to)) {
     deadlines.push({
       type: "income_tax",
-      description: `Income tax (terminal tax) for ${taxYear} tax year`,
+      description: `Income tax (terminal tax payment) for ${taxYear} tax year${
+        config.tax_agent_linked ? " — tax agent extension" : ""
+      }`,
+      dueDate: formatDate(dueDate),
+      taxYear,
+    });
+  }
+
+  return deadlines;
+}
+
+/**
+ * Income tax RETURN filing deadlines (IR3 / IR4 / IR6 / IR7) — distinct
+ * from the terminal tax PAYMENT date.
+ *
+ * Without tax-agent extension: filing due 7 July of (taxYear + 1) for
+ * a March-balance entity (and 7 of the 4th month after balance for
+ * other balance dates).
+ *
+ * With tax-agent extension: filing due 31 March of (taxYear + 2) for
+ * a March-balance entity. The extension defers the form filing by
+ * approximately 9 months while only deferring the payment by 2 months.
+ *
+ * Issue #163.
+ */
+function calculateIncomeTaxFilingDeadlines(
+  config: DeadlineInput,
+  taxYear: number,
+  from: Date,
+  to: Date
+): Deadline[] {
+  const deadlines: Deadline[] = [];
+  const { month: balMonth } = parseBalanceDate(config.balance_date);
+
+  // Pick form by entity type.
+  const formByEntity: Record<EntityType, "ir3" | "ir4" | "ir6" | "ir7"> = {
+    company: "ir4",
+    sole_trader: "ir3",
+    trust: "ir6",
+    partnership: "ir7",
+  };
+  const formType = formByEntity[config.entity_type];
+  const formLabel = formType.toUpperCase();
+
+  // Standard filing date: 7 of the month 4 months after balance month,
+  // in the calendar year of the balance date. For March balance (3),
+  // filingMonth = 7 (July) and filingYear = taxYear (e.g. 7 July 2026
+  // for tax year 2026 ending 31 March 2026). For December balance (12),
+  // filingMonth = 16 → 4 (April) of (taxYear + 1).
+  let standardFilingMonth = balMonth + 4;
+  let standardFilingYear = taxYear;
+  if (standardFilingMonth > 12) {
+    standardFilingMonth -= 12;
+    standardFilingYear += 1;
+  }
+
+  // With tax-agent extension: 31 March of the income year following the
+  // year of the standard due date. For March balance: standard July
+  // 2026 → extension 31 March 2027. For December balance: standard
+  // April 2027 → extension 31 March 2028.
+  const dueDate = config.tax_agent_linked
+    ? makeWorkingDate(standardFilingYear + 1, 3, 31)
+    : makeWorkingDate(standardFilingYear, standardFilingMonth, 7);
+  const descriptionSuffix = config.tax_agent_linked ? " — tax agent extension" : "";
+
+  if (isInRange(dueDate, from, to)) {
+    deadlines.push({
+      type: formType,
+      description: `${formLabel} income tax return for ${taxYear} tax year${descriptionSuffix}`,
       dueDate: formatDate(dueDate),
       taxYear,
     });

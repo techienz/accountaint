@@ -23,6 +23,7 @@ export type CreateBusinessInput = {
   incorporation_date?: string;
   fbt_registered?: boolean;
   pays_contractors?: boolean;
+  tax_agent_linked?: boolean;
 };
 
 export type UpdateBusinessInput = Partial<CreateBusinessInput> & {
@@ -56,6 +57,7 @@ export function createBusiness(userId: string, input: CreateBusinessInput) {
       incorporation_date: input.incorporation_date || null,
       fbt_registered: input.fbt_registered ?? false,
       pays_contractors: input.pays_contractors ?? false,
+      tax_agent_linked: input.tax_agent_linked ?? false,
       balance_date: input.balance_date || "03-31",
       gst_registered: input.gst_registered ?? false,
       gst_filing_period: input.gst_filing_period,
@@ -159,6 +161,7 @@ export function updateBusiness(userId: string, businessId: string, input: Update
     updates.incorporation_date = input.incorporation_date || null;
   if (input.fbt_registered !== undefined) updates.fbt_registered = input.fbt_registered;
   if (input.pays_contractors !== undefined) updates.pays_contractors = input.pays_contractors;
+  if (input.tax_agent_linked !== undefined) updates.tax_agent_linked = input.tax_agent_linked;
   if (input.invoice_prefix !== undefined) updates.invoice_prefix = input.invoice_prefix;
   if (input.payment_instructions !== undefined) updates.payment_instructions = input.payment_instructions || null;
   if (input.invoice_custom_footer !== undefined) updates.invoice_custom_footer = input.invoice_custom_footer || null;
