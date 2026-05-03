@@ -42,8 +42,29 @@ export async function DELETE(
   if (!session.activeBusiness) return NextResponse.json({ error: "No active business" }, { status: 400 });
 
   const { id } = await params;
-  const result = deleteInvoice(id, session.activeBusiness.id);
-  if (!result) return NextResponse.json({ error: "Not found or not deletable" }, { status: 404 });
+  const result = deleteInvoice(id, session.activeBusiness.id, {
+    userId: session.user.id,
+    source: "ui",
+  });
+  if (!result.ok) {
+    if (result.reason === "not_found") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (result.reason === "has_payments") {
+      return NextResponse.json(
+        {
+          error: `Cannot delete: invoice has ${result.payment_count} payment record(s) totalling $${result.amount_paid.toFixed(2)}. Reverse the payments first, or use Void to keep the audit trail.`,
+        },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json(
+      {
+        error: `Cannot delete invoice with status '${result.status}'. Paid invoices and voided invoices are protected.`,
+      },
+      { status: 400 }
+    );
+  }
 
   return NextResponse.json({ success: true });
 }

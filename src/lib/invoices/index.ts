@@ -6,6 +6,7 @@ import type { XeroInvoice } from "@/lib/xero/types";
 import { postSalesInvoiceJournal, postPurchaseInvoiceJournal, postInvoiceReversal } from "@/lib/ledger/post";
 import { findActiveJournalForSource, reverseJournalEntry } from "@/lib/ledger/journals";
 import { getStandardGstRate } from "@/lib/tax/rules";
+import { recordAction, type AuditSource } from "@/lib/audit/actions";
 
 type InvoiceType = "ACCREC" | "ACCPAY";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue" | "void";
@@ -292,8 +293,39 @@ export function updateInvoice(
   return getInvoice(id, businessId);
 }
 
-export function deleteInvoice(id: string, businessId: string) {
+export type DeleteInvoiceResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "not_deletable"; status: InvoiceStatus }
+  | { ok: false; reason: "has_payments"; amount_paid: number; payment_count: number };
+
+/**
+ * Hard-delete an invoice and everything that hangs off it. Allowed for
+ * draft / sent / overdue. Disallowed for paid (money has moved) and void
+ * (the void is itself the audit trail; deleting it defeats the purpose).
+ *
+ * Cascades:
+ *   - invoice_line_items (FK ON DELETE CASCADE — automatic)
+ *   - payments (FK ON DELETE CASCADE — automatic)
+ *   - active journal entries for this invoice (manual delete; journal_lines
+ *     cascade-delete via FK)
+ *   - active journal entries for any payment records (must delete BEFORE
+ *     the invoice, since the payments themselves cascade away with it)
+ *   - linked timesheet entries: invoice_id is FK ON DELETE SET NULL but the
+ *     status field stays "invoiced" — explicitly reset to "approved" so
+ *     they can be re-invoiced
+ *
+ * Writes an audit_log entry BEFORE the delete with a snapshot of the
+ * invoice + line items so future audits can see "this invoice existed and
+ * was deleted by user X on date Y".
+ */
+export function deleteInvoice(
+  id: string,
+  businessId: string,
+  options: { userId?: string | null; source?: AuditSource } = {}
+): DeleteInvoiceResult {
   const db = getDb();
+
   const existing = db
     .select()
     .from(schema.invoices)
@@ -304,11 +336,104 @@ export function deleteInvoice(id: string, businessId: string) {
       )
     )
     .get();
-  if (!existing) return false;
-  if (existing.status !== "draft") return false;
+  if (!existing) return { ok: false, reason: "not_found" };
 
-  const result = db
-    .delete(schema.invoices)
+  // Status guard: paid + void are protected.
+  if (existing.status === "paid" || existing.status === "void") {
+    return {
+      ok: false,
+      reason: "not_deletable",
+      status: existing.status as InvoiceStatus,
+    };
+  }
+
+  // Partial-payment guard: a sent/overdue invoice can have payments recorded
+  // even if status isn't yet "paid". Deleting silently nukes those payment
+  // records — refuse and require the user to reverse the payments first
+  // (or use Void, which preserves the audit trail of the round-trip).
+  const allPayments = db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.invoice_id, id))
+    .all();
+  if (allPayments.length > 0 || existing.amount_paid > 0) {
+    return {
+      ok: false,
+      reason: "has_payments",
+      amount_paid: existing.amount_paid,
+      payment_count: allPayments.length,
+    };
+  }
+
+  const lineItems = db
+    .select()
+    .from(schema.invoiceLineItems)
+    .where(eq(schema.invoiceLineItems.invoice_id, id))
+    .all();
+
+  // 1. Audit-log the deletion BEFORE the delete itself, with a snapshot of
+  //    the invoice and its line items. recordAction never throws.
+  recordAction({
+    businessId,
+    userId: options.userId ?? null,
+    source: options.source ?? "api",
+    entityType: "invoice",
+    entityId: id,
+    action: "deleted",
+    summary: `Deleted invoice ${existing.invoice_number} (status was ${existing.status})`,
+    before: { ...existing, line_items: lineItems },
+  });
+
+  // 2. Delete journal entries for any payment records first. payments
+  //    will be cascade-deleted with the invoice in step 5, but their
+  //    journal entries (source_type='payment') would be orphaned.
+  //    Note: with the partial-payment guard above, allPayments should be
+  //    empty here — but the sweep is kept defensively in case payments
+  //    exist that don't show on amount_paid (e.g. fully-reversed pairs).
+  //    Delete ALL journal entries (active + reversed) for each payment
+  //    by source criteria, not just `findActiveJournalForSource` which
+  //    filters is_reversed=false and would leave orphan reversal entries
+  //    pointing at deleted payment ids.
+  for (const p of allPayments) {
+    db.delete(schema.journalEntries)
+      .where(
+        and(
+          eq(schema.journalEntries.business_id, businessId),
+          eq(schema.journalEntries.source_type, "payment"),
+          eq(schema.journalEntries.source_id, p.id)
+        )
+      )
+      .run();
+    // journal_lines cascade-delete via FK
+  }
+
+  // 3. Delete the invoice's own active journal entries (and any reversals).
+  //    journal_lines cascade-delete via FK.
+  db.delete(schema.journalEntries)
+    .where(
+      and(
+        eq(schema.journalEntries.business_id, businessId),
+        eq(schema.journalEntries.source_type, "invoice"),
+        eq(schema.journalEntries.source_id, id)
+      )
+    )
+    .run();
+
+  // 4. Reset linked timesheet entries. The FK is ON DELETE SET NULL, but
+  //    status stays "invoiced". Reset to "approved" so they can be
+  //    re-invoiced cleanly.
+  db.update(schema.timesheetEntries)
+    .set({ status: "approved", invoice_id: null, updated_at: new Date() })
+    .where(
+      and(
+        eq(schema.timesheetEntries.business_id, businessId),
+        eq(schema.timesheetEntries.invoice_id, id)
+      )
+    )
+    .run();
+
+  // 5. Delete the invoice. Cascades: invoice_line_items, payments.
+  db.delete(schema.invoices)
     .where(
       and(
         eq(schema.invoices.id, id),
@@ -316,7 +441,8 @@ export function deleteInvoice(id: string, businessId: string) {
       )
     )
     .run();
-  return result.changes > 0;
+
+  return { ok: true };
 }
 
 export function listInvoices(
