@@ -148,7 +148,7 @@ export const chatTools: Tool[] = [
   {
     name: "calculate_gst_return",
     description:
-      "Calculate a GST return for a specific period. Computed from posted journal entries (so it includes confirmed expenses + manual GST adjustments, not just invoices). Uses the business's configured filing basis ('invoice' or 'payments' — see get_business_config). Returns totals for sales, purchases, GST collected, GST paid, net GST, and a per-line breakdown. The same numbers appear at /tax-prep/gst/[period] and /reports/gst-history.",
+      "Calculate a GST return for a specific period. Computed from posted journal entries (so it includes confirmed expenses + manual GST adjustments, not just invoices). Uses the business's configured filing basis ('invoice' or 'payments' — see get_business_config); on payments basis, GST is recognised at payment date with proportional recognition for partial payments (per IR365 / GST Act 1985 s 9). Returns totals for sales, purchases, GST collected, GST paid, net GST, and a per-line breakdown. The same numbers appear at /tax-prep/gst/[period] and /reports/gst-history.",
     input_schema: {
       type: "object" as const,
       properties: {
