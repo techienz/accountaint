@@ -18,6 +18,15 @@ export const businesses = sqliteTable("businesses", {
   gst_filing_period: text("gst_filing_period", {
     enum: ["monthly", "2monthly", "6monthly"],
   }),
+  // For 2-monthly filers only. NZ has two 2-monthly cycles (per IRD):
+  //   "A" — period ends Jan/Mar/May/Jul/Sep/Nov
+  //   "B" — period ends Feb/Apr/Jun/Aug/Oct/Dec
+  // IRD assigns one when you register; check myIR > Returns to confirm.
+  // NULL = unconfigured (deadline calculator falls back to A and warns).
+  // Issue #160.
+  gst_2monthly_cycle: text("gst_2monthly_cycle", {
+    enum: ["A", "B"],
+  }),
   gst_basis: text("gst_basis", {
     enum: ["invoice", "payments", "hybrid"],
   }),

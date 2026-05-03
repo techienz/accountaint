@@ -25,6 +25,7 @@ type BusinessConfig = {
   balance_date: string;
   gst_registered: boolean;
   gst_filing_period?: string | null;
+  gst_2monthly_cycle?: string | null;
   has_employees: boolean;
   paye_frequency?: string | null;
   provisional_tax_method?: string | null;
@@ -108,6 +109,7 @@ export function runHealthChecks(business: BusinessConfig): HealthCheckItem[] {
       | "2monthly"
       | "6monthly"
       | undefined,
+    gst_2monthly_cycle: business.gst_2monthly_cycle as "A" | "B" | undefined,
     has_employees: business.has_employees,
     paye_frequency: business.paye_frequency as
       | "monthly"

@@ -1,0 +1,1 @@
+ALTER TABLE `businesses` ADD `gst_2monthly_cycle` text;

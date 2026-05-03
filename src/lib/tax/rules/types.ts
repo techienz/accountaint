@@ -1,5 +1,12 @@
 export type EntityType = "company" | "sole_trader" | "partnership" | "trust";
 export type GstFilingPeriod = "monthly" | "2monthly" | "6monthly";
+/**
+ * NZ 2-monthly GST cycle assigned by IRD on registration.
+ * Only meaningful when GstFilingPeriod === "2monthly".
+ *   "A" — period ends Jan/Mar/May/Jul/Sep/Nov
+ *   "B" — period ends Feb/Apr/Jun/Aug/Oct/Dec
+ */
+export type Gst2MonthlyCycle = "A" | "B";
 export type ProvisionalTaxMethod = "standard" | "estimation" | "aim";
 export type PayeFrequency = "monthly" | "twice_monthly";
 

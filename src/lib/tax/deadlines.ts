@@ -1,6 +1,7 @@
 import type {
   EntityType,
   GstFilingPeriod,
+  Gst2MonthlyCycle,
   ProvisionalTaxMethod,
   PayeFrequency,
 } from "./rules/types";
@@ -12,6 +13,13 @@ export type DeadlineInput = {
   balance_date: string; // MM-DD
   gst_registered: boolean;
   gst_filing_period?: GstFilingPeriod;
+  /**
+   * IRD-assigned 2-monthly cycle. Only meaningful when
+   * gst_filing_period === "2monthly". Falls back to "A" with a warning
+   * if unset (matches the pre-#160 hardcoded behaviour while flagging
+   * the assumption).
+   */
+  gst_2monthly_cycle?: Gst2MonthlyCycle;
   has_employees: boolean;
   paye_frequency?: PayeFrequency;
   provisional_tax_method?: ProvisionalTaxMethod;
@@ -150,8 +158,16 @@ function calculateGstDeadlines(
   if (period === "monthly") {
     periodEndMonths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   } else if (period === "2monthly") {
-    // Standard 2-monthly periods: Jan, Mar, May, Jul, Sep, Nov
-    periodEndMonths = [1, 3, 5, 7, 9, 11];
+    // NZ has two 2-monthly cycles assigned by IRD (#160):
+    //   "A" — period ends Jan/Mar/May/Jul/Sep/Nov
+    //   "B" — period ends Feb/Apr/Jun/Aug/Oct/Dec
+    // Default to "A" when unset to preserve pre-#160 behaviour. The
+    // settings UI surfaces a warning when the cycle is unconfigured so
+    // users on Cycle B can correct it. Tracking: #160.
+    periodEndMonths =
+      config.gst_2monthly_cycle === "B"
+        ? [2, 4, 6, 8, 10, 12]
+        : [1, 3, 5, 7, 9, 11];
   } else {
     // 6-monthly: periods end at balance month and 6 months before
     // e.g. March balance → periods end Mar & Sep
