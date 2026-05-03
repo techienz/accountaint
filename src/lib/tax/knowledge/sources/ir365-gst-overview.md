@@ -20,3 +20,9 @@ You can voluntarily register if your turnover is below $60,000. Once registered,
 - **Invoice basis** — account for GST when you issue or receive an invoice
 - **Payments basis** — account for GST when you pay or receive payment (available if turnover under $2 million)
 - **Hybrid basis** — invoice basis for sales, payments basis for purchases
+
+### Timing of recognition (s 9 GST Act 1985)
+
+On the payments basis, GST on a sale is recognised in the period the payment is **received**, and GST on a purchase is recognised in the period the payment is **made**. If a customer pays an invoice in instalments, GST is recognised in proportion to each payment. Direct cash expenses (paid at the time of supply, no invoice) are recognised in the same period on either basis.
+
+You must use the same basis consistently and notify Inland Revenue if you change. Switching from invoice to payments basis (or vice versa) requires a one-off "change of basis" adjustment to avoid double-counting or omitting GST on transactions straddling the change.

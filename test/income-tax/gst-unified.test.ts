@@ -33,9 +33,12 @@ describe("GST unified calculator return shape", () => {
     expect(pay.basis).toBe("payments");
   });
 
-  it("GstReturnFromLedger carries a basisCaveat field for payments-basis returns", () => {
-    // payments-basis isn't fully supported yet (audit #76); when basis is
-    // payments, the result attaches a basisCaveat string the UI can show.
+  it("GstReturnFromLedger carries an optional basisCaveat field", () => {
+    // After audit #76, payments-basis math is correct, so basisCaveat is
+    // no longer set automatically. It remains as an OPTIONAL field that the
+    // calculator uses to flag genuine data-integrity issues (e.g. a payment
+    // journal whose linked invoice can't be found). The shape is still
+    // pinned here so any refactor that drops the field fails compilation.
     const r: GstReturnFromLedger = {
       period: { from: "2026-01-01", to: "2026-03-31" },
       basis: "payments",
@@ -46,9 +49,9 @@ describe("GST unified calculator return shape", () => {
       gstOnPurchases: 0,
       netGst: 0,
       lineItems: [],
-      basisCaveat: "Calculation uses accrual treatment...",
+      basisCaveat: "1 payment entry was skipped because the linked invoice could not be found.",
     };
-    expect(r.basisCaveat).toMatch(/accrual/i);
+    expect(r.basisCaveat).toMatch(/skipped/i);
   });
 
   it("regression: never returns the legacy bare-null shape", () => {

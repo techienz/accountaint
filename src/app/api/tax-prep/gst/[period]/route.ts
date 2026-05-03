@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getDb, schema } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
-import { calculateGstReturnFromLedger } from "@/lib/gst/calculator";
+import { calculateGstReturnFromLedger, type GstBasis } from "@/lib/gst/calculator";
 import { getTaxYear } from "@/lib/tax/rules";
 
 export async function GET(
@@ -28,7 +28,12 @@ export async function GET(
 
   const taxConfig = getTaxYear(new Date());
   const gstRate = taxConfig?.gstRate || 0.15;
-  const basis = (business.gst_basis as "invoice" | "payments") || "invoice";
+  const basis: GstBasis =
+    business.gst_basis === "payments"
+      ? "payments"
+      : business.gst_basis === "hybrid"
+        ? "hybrid"
+        : "invoice";
 
   // Migrated from invoice-based to ledger-based calc (audit #115). Captures
   // confirmed expenses + manual GST adjustments in addition to invoices.
