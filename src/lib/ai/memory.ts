@@ -1,5 +1,7 @@
 import { embed } from "@/lib/lmstudio/embeddings";
 import { upsertRecords, searchTable } from "@/lib/vector/store";
+import { sanitise } from "./sanitise";
+import type { SanitisationMap } from "./types";
 
 const TABLE_NAME = "chat_memory";
 const MIN_CONTENT_LENGTH = 200;
@@ -73,4 +75,22 @@ export async function searchChatMemory(
     content: r.content as string,
     createdAt: r.created_at as string,
   }));
+}
+
+/**
+ * Format chat memory results for injection into the system prompt.
+ * Audit #100 — stored memory rows hold raw user / assistant content
+ * (assistant text was desanitised before save), so we must run them
+ * through the current stream's sanitiser before they reach Claude.
+ * Stale tokens from a prior session's map pass through unchanged
+ * (no current contact matches them); real names introduced since
+ * storage, IRD numbers, and bank numbers are scrubbed here.
+ */
+export function formatMemoryChunks(
+  results: ChatMemoryResult[],
+  sanitisationMap: SanitisationMap
+): string[] {
+  return results.map(
+    (r) => `[${r.createdAt.slice(0, 10)}] ${r.role}: ${sanitise(r.content, sanitisationMap)}`
+  );
 }
