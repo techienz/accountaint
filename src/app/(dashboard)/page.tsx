@@ -297,8 +297,15 @@ export default async function DashboardPage() {
     source: "akahu" as const,
   }));
 
-  // Local-first: AP/AR from local invoices
-  const localInvoices = listInvoices(businessId);
+  // Local-first: AP/AR from local invoices.
+  // Voided invoices are explicitly excluded — the void path now zeros
+  // amount_due going forward (and a migration backfills existing void
+  // rows), but we keep the explicit filter as defense in depth so any
+  // future code that re-uses these aggregations can't accidentally
+  // include voids again.
+  const localInvoices = listInvoices(businessId).filter(
+    (inv) => inv.status !== "void"
+  );
   const totalReceivable = localInvoices
     .filter((inv) => inv.type === "ACCREC" && inv.amount_due > 0)
     .reduce((sum, inv) => sum + inv.amount_due, 0);
