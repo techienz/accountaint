@@ -52,23 +52,25 @@ CRITICAL INSTRUCTIONS — read carefully:
 
 1. **NZ tax-year naming convention**: "tax year ${taxYear}" means the period ${yearStart} → ${yearEnd}. NOT calendar year ${taxYear}. The rate applicable to this period is what you must find.
 
-2. **Do NOT rely on prior knowledge.** Use only what you can find in *current* published sources. Several NZ tax rates were updated in 2024 (e.g. personal income tax thresholds changed effective 31 July 2024; trustee tax rate to 39%). Prior-knowledge values may be stale.
+2. **Do NOT rely on prior knowledge.** Use only what you can find in *current* published sources. NZ tax rates change periodically. The Description field above flags any specific recent changes you should be aware of when interpreting search results — read it carefully before assuming a value is current.
 
 3. **Source must be current.** The page you cite must either:
    (a) explicitly state an "as at" / "effective from" / "applies from" date that covers ${yearStart} to ${yearEnd}, OR
-   (b) explicitly state "no changes for ${taxYear - 1}/${taxYear}" or similar.
-   If neither is present, return status="uncertain" — do NOT guess from training data.
+   (b) explicitly state that there are no changes for the ${taxYear - 1}/${taxYear} period.
+   If neither is present — even if the page asserts a value confidently — return status="uncertain". Do NOT guess from training data or from a page without dated provenance.
 
 4. **If sources disagree**, prefer the most recent IRD/MBIE/legislation.govt.nz page that explicitly covers the requested tax year.
 
-5. **Don't regress to old values.** If you find both a current and a historical bracket set on the same page, return the current one. Mention any superseded set in notes.
+5. **If a page shows multiple rate sets keyed by effective-from dates, return the set whose effective-from date is the latest one that is on or before ${yearEnd}.** Compare dates mechanically — do not rely on labels like "current" or "historical", which may be stale or transposed. Mention any superseded set in notes.
+
+6. **Cross-check the stored value**: after finding a verified value from a dated source, compare it to the stored value. If they match → status="current". If they differ → status="changed". If you can't find any dated source meeting requirement 3 → status="uncertain". Do NOT default to "current" because the stored value happens to look plausible.
 
 ${sourcesBlock}
 
 Respond in JSON only, no markdown formatting:
 {
   "verified_value": "the value you found, formatted the same way as the current stored value",
-  "status": "current" if the stored value matches what you found, "changed" if different, "uncertain" if you couldn't confirm with the currency-evidence requirements above,
+  "status": "current" | "changed" | "uncertain",
   "source_url": "specific URL where you found this — must be a page with an as-at or effective-from date",
   "as_at_date": "the as-at / effective-from / publish date shown on that source (YYYY-MM-DD if possible, otherwise as quoted)",
   "notes": "brief explanation. If status='changed', explain why the stored value is wrong and which date the change took effect. If 'uncertain', explain what you couldn't confirm."
