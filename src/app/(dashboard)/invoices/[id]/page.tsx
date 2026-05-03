@@ -112,9 +112,24 @@ export default function InvoiceDetailPage() {
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this draft invoice?")) return;
+    if (!invoice) return;
+    const isDraft = invoice.status === "draft";
+    const message = isDraft
+      ? "Delete this draft invoice?"
+      : `Permanently delete ${invoice.invoice_number}? This will:\n\n` +
+        `  • Remove the invoice and all its line items\n` +
+        `  • Remove its ledger journal entries\n` +
+        `  • Remove any payment records\n` +
+        `  • Reset linked timesheet entries back to 'approved'\n\n` +
+        `An entry will be written to the audit log. This cannot be undone — consider Void instead if you want to keep the audit trail.`;
+    if (!confirm(message)) return;
     const res = await fetch(`/api/invoices/${id}`, { method: "DELETE" });
-    if (res.ok) router.push("/invoices");
+    if (res.ok) {
+      router.push("/invoices");
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Delete failed");
+    }
   }
 
   async function handleRecordPayment(e: React.FormEvent<HTMLFormElement>) {
@@ -263,14 +278,14 @@ export default function InvoiceDetailPage() {
             </Button>
           )}
         {invoice.status === "draft" && (
-          <>
-            <Button variant="outline" onClick={() => router.push(`/invoices/new?edit=${id}`)}>
-              Edit
-            </Button>
-            <Button variant="destructive" size="sm" onClick={handleDelete}>
-              Delete
-            </Button>
-          </>
+          <Button variant="outline" onClick={() => router.push(`/invoices/new?edit=${id}`)}>
+            Edit
+          </Button>
+        )}
+        {invoice.status !== "paid" && invoice.status !== "void" && (
+          <Button variant="destructive" size="sm" onClick={handleDelete}>
+            Delete
+          </Button>
         )}
         <a href={`/api/invoices/${id}/pdf`} target="_blank" rel="noopener noreferrer">
           <Button variant="outline">
