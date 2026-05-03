@@ -535,8 +535,13 @@ export function voidInvoice(id: string, businessId: string) {
     .get();
   if (!existing || existing.status === "void") return null;
 
+  // Set status to void AND zero the amount_due. Without zeroing, any
+  // dashboard / report aggregation that filters by `amount_due > 0`
+  // (rather than by status) would still include the voided invoice in
+  // its total — exactly the bug that surfaced in the Money Waiting card
+  // even after the journal-entry reversal made the ledger correct.
   db.update(schema.invoices)
-    .set({ status: "void", updated_at: new Date() })
+    .set({ status: "void", amount_due: 0, updated_at: new Date() })
     .where(eq(schema.invoices.id, id))
     .run();
 
