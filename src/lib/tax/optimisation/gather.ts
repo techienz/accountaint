@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import { getNzTaxYear, getTaxYearConfig } from "@/lib/tax/rules";
 import { getWorkContractSummary } from "@/lib/work-contracts";
+import { calculateInvestmentBoost } from "@/lib/calculators/investment-boost";
 import type { OptimisationSnapshot } from "./types";
 
 export function gatherOptimisationSnapshot(businessId: string): OptimisationSnapshot {
@@ -26,7 +27,7 @@ export function gatherOptimisationSnapshot(businessId: string): OptimisationSnap
   // Profit from Xero P&L cache or estimate from contracts
   let companyProfit = 0;
   let revenue = 0;
-  let expenses: Record<string, number> = {};
+  const expenses: Record<string, number> = {};
 
   const plCache = db
     .select()
@@ -150,6 +151,21 @@ export function gatherOptimisationSnapshot(businessId: string): OptimisationSnap
     }));
   const totalAssetValue = allAssets.reduce((sum, a) => sum + (a.cost ?? 0), 0);
 
+  // Investment Boost (Budget 2025) — 20% upfront on new assets acquired
+  // on/after 22 May 2025. Schema doesn't yet track is_new (see Phase 2
+  // follow-up issue), so the calculator runs with assumesNew=true and
+  // the snapshot signals that the user must confirm.
+  const ibCalc = calculateInvestmentBoost(recentAssetPurchases);
+  const investmentBoost = {
+    effectiveFrom: ibCalc.effectiveFrom,
+    rate: ibCalc.rate,
+    totalEstimate: ibCalc.totalIb,
+    assumesNew: ibCalc.assets.some((a) => a.assumesNew),
+    assets: ibCalc.assets,
+    note:
+      "Per-asset estimate assumes each asset is NEW (or new to NZ). The user must confirm — assets previously used in NZ, or residential buildings, are not eligible. Estimates are GST-exclusive and only cover the last 6 months of asset purchases.",
+  };
+
   // KiwiSaver — find first active employee
   const activeEmployee = db
     .select()
@@ -218,6 +234,7 @@ export function gatherOptimisationSnapshot(businessId: string): OptimisationSnap
     vehicleClaim,
     recentAssetPurchases,
     totalAssetValue: Math.round(totalAssetValue * 100) / 100,
+    investmentBoost,
     kiwisaver,
     gst: {
       registered: business.gst_registered,

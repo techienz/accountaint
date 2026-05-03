@@ -34,7 +34,7 @@ Consider these categories:
 - Home office claim method (proportional vs square metre rate)
 - Vehicle claim method (mileage rate vs actual cost with logbook)
 - Low-value asset write-off ($1,000 threshold) and asset splitting
-- Investment Boost (20% immediate deduction on new assets over $1,000)
+- Investment Boost (20% immediate deduction on new — or new-to-NZ — depreciable assets acquired on/after 22 May 2025; no minimum value; residential buildings excluded). The snapshot includes a deterministic per-asset estimate at \`investmentBoost.assets\` — use those numbers rather than guessing. The estimate assumes each asset is NEW; if \`assumesNew\` is true on any asset, your recommendation MUST instruct the user to confirm the new-vs-used status before claiming.
 - Expense prepayment before balance date
 - Income timing around balance date (invoice deferral)
 - KiwiSaver employer contributions and ESCT bracket optimisation
