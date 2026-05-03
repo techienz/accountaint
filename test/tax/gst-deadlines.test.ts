@@ -71,4 +71,23 @@ describe("GST deadlines — 2-monthly cycle", () => {
     expect(aprPeriod).toBeDefined();
     expect(aprPeriod?.description).toContain("Mar-Apr 2026");
   });
+
+  it("Cycle B: Feb period (Jan-Feb 2027) → due 28 Mar (no special exception)", () => {
+    // The 7-May exception only applies to March period ends (Cycle A's Feb-Mar
+    // period). Cycle B's Feb period gets the standard 28th-of-following-month.
+    const deadlines = gstDeadlines({
+      gst_2monthly_cycle: "B",
+      dateRange: {
+        from: new Date("2026-04-01"),
+        to: new Date("2027-04-30"),
+      },
+    });
+    const febPeriod = deadlines.find(
+      (d) => d.description?.includes("Jan-Feb 2027")
+    );
+    expect(febPeriod).toBeDefined();
+    // 28 Mar 2027 is Easter Sunday; Mon 29 Mar is Easter Monday (public
+    // holiday); next working day is Tue 30 Mar.
+    expect(febPeriod?.dueDate).toBe("2027-03-30");
+  });
 });
