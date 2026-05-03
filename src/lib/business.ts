@@ -12,6 +12,7 @@ export type CreateBusinessInput = {
   balance_date?: string;
   gst_registered?: boolean;
   gst_filing_period?: "monthly" | "2monthly" | "6monthly";
+  gst_2monthly_cycle?: "A" | "B" | null;
   gst_basis?: "invoice" | "payments" | "hybrid";
   provisional_tax_method?: "standard" | "estimation" | "aim";
   has_employees?: boolean;
@@ -58,6 +59,7 @@ export function createBusiness(userId: string, input: CreateBusinessInput) {
       balance_date: input.balance_date || "03-31",
       gst_registered: input.gst_registered ?? false,
       gst_filing_period: input.gst_filing_period,
+      gst_2monthly_cycle: input.gst_2monthly_cycle ?? null,
       gst_basis: input.gst_basis,
       provisional_tax_method: input.provisional_tax_method,
       has_employees: input.has_employees ?? false,
@@ -141,6 +143,7 @@ export function updateBusiness(userId: string, businessId: string, input: Update
   if (input.balance_date !== undefined) updates.balance_date = input.balance_date;
   if (input.gst_registered !== undefined) updates.gst_registered = input.gst_registered;
   if (input.gst_filing_period !== undefined) updates.gst_filing_period = input.gst_filing_period;
+  if (input.gst_2monthly_cycle !== undefined) updates.gst_2monthly_cycle = input.gst_2monthly_cycle;
   if (input.gst_basis !== undefined) updates.gst_basis = input.gst_basis;
   if (input.provisional_tax_method !== undefined)
     updates.provisional_tax_method = input.provisional_tax_method;

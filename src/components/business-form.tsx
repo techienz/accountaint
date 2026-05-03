@@ -25,6 +25,7 @@ type Business = {
   balance_date: string;
   gst_registered: boolean;
   gst_filing_period?: string | null;
+  gst_2monthly_cycle?: string | null;
   gst_basis?: string | null;
   provisional_tax_method?: string | null;
   has_employees: boolean;
@@ -55,6 +56,7 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
 
   const [entityType, setEntityType] = useState(business?.entity_type || "company");
   const [gstRegistered, setGstRegistered] = useState(business?.gst_registered ?? false);
+  const [gstFilingPeriod, setGstFilingPeriod] = useState(business?.gst_filing_period || "2monthly");
   const [hasEmployees, setHasEmployees] = useState(business?.has_employees ?? false);
   const [irdNumber, setIrdNumber] = useState(business?.ird_number || "");
 
@@ -85,6 +87,10 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
       gst_filing_period: gstRegistered
         ? (formData.get("gst_filing_period") as string)
         : undefined,
+      gst_2monthly_cycle:
+        gstRegistered && gstFilingPeriod === "2monthly"
+          ? ((formData.get("gst_2monthly_cycle") as string) || null)
+          : null,
       gst_basis: gstRegistered
         ? (formData.get("gst_basis") as string)
         : undefined,
@@ -240,7 +246,8 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
                   <Label>GST filing period</Label>
                   <Select
                     name="gst_filing_period"
-                    defaultValue={business?.gst_filing_period || "2monthly"}
+                    value={gstFilingPeriod}
+                    onValueChange={(v) => setGstFilingPeriod(v ?? "2monthly")}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -252,6 +259,40 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
                     </SelectContent>
                   </Select>
                 </div>
+                {gstFilingPeriod === "2monthly" && (
+                  <div className="space-y-2">
+                    <Label>GST 2-monthly cycle</Label>
+                    <Select
+                      name="gst_2monthly_cycle"
+                      defaultValue={business?.gst_2monthly_cycle || ""}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select your IRD-assigned cycle" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A">A — period ends Jan/Mar/May/Jul/Sep/Nov</SelectItem>
+                        <SelectItem value="B">B — period ends Feb/Apr/Jun/Aug/Oct/Dec</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      IRD assigns one when you register. Check{" "}
+                      <a
+                        href="https://myir.ird.govt.nz"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                      >
+                        myIR
+                      </a>{" "}
+                      → Returns to confirm — the period-end date in your filing schedule tells you which cycle.
+                      {!business?.gst_2monthly_cycle && (
+                        <span className="block mt-1 text-amber-600 dark:text-amber-400">
+                          Unset — deadlines will assume Cycle A. Set this to get correct GST due dates if you&apos;re on Cycle B.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>GST basis</Label>
                   <Select
