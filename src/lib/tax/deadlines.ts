@@ -60,8 +60,7 @@ export type DeadlineType =
   | "gst" | "provisional_tax" | "income_tax" | "paye"
   | "ir3" | "ir4" | "ir6" | "ir7"
   | "imputation_return"          // IR4J — companies, alongside IR4 (#166)
-  | "rwt_dividend_payment"       // IR15P — monthly when dividends paid (#165)
-  | "rwt_annual_reconciliation"  // IR15S — annual, 31 May (#165)
+  | "rwt_dividend_payment"       // RWT on dividends — monthly Investment Income reporting (#165)
   | "annual_return" | "acc_levy" | "fbt" | "schedular_payment";
 
 export type Deadline = {
@@ -435,9 +434,20 @@ function calculateIncomeTaxFilingDeadlines(
   const descriptionSuffix = config.tax_agent_linked ? " — tax agent extension" : "";
 
   if (isInRange(dueDate, from, to)) {
+    // Per IR4S 2025 form (header instruction) and IR4 guide 2025 page
+    // 48 (Question 41), the IR4S shareholder-employee return is a
+    // supplementary schedule attached to the IR4 — same due date, no
+    // separate filing event. Bundle it into the IR4 description when
+    // the company has a shareholder-employee, so users see both forms
+    // they need to prepare.
+    const ir4sBundle =
+      formType === "ir4" && config.has_shareholder_employee
+        ? " + IR4S shareholder-employee return"
+        : "";
+
     deadlines.push({
       type: formType,
-      description: `${formLabel} income tax return for ${taxYear} tax year${descriptionSuffix}`,
+      description: `${formLabel}${ir4sBundle} income tax return for ${taxYear} tax year${descriptionSuffix}`,
       dueDate: formatDate(dueDate),
       taxYear,
     });
@@ -683,57 +693,47 @@ function calculateImputationReturnDeadlines(
 }
 
 /**
- * RWT on dividends — emitted when the business pays dividends. Per
- * NZ withholding-tax convention (canonical source: IR284 PDF, not on
- * public IRD HTML):
+ * RWT on dividends — Investment Income Reporting (II) regime.
  *
- *   - IR15P: monthly RWT payment, due 20th of the month following any
- *     month a dividend was paid. Emit a recurring monthly placeholder
- *     so the user is reminded to file IF they paid a dividend that
- *     month — actual filing is event-driven.
- *   - IR15S: annual reconciliation, due 31 May for the tax year ending
- *     31 March.
+ * Per IR284 (October 2025 edition), Part 2 "Filing and payments",
+ * subsection "Monthly information" (page 10):
  *
- * Issue #165. TODO: cite IR284 section/page in code comment once PDF
- * has been cross-checked.
+ *   "This information is due by the 20th of the month following the
+ *    month in which the dividend is paid… You must also pay any tax
+ *    withheld to Inland Revenue by the 20th of the following month."
+ *
+ * Filing is electronic via myIR / Gateway / file upload. The legacy
+ * paper "IR15P" form name no longer applies under the II regime.
+ *
+ * IMPORTANT: there is NO annual RWT-on-dividends reconciliation under
+ * the current regime. The audit reviewer originally guessed an "IR15S
+ * due 31 May" deadline; the IR284 PDF makes zero mention of it. The
+ * only annual touchpoint is a 20-April-following-tax-year deadline for
+ * correcting over-deductions (page 19), which is event-driven and not
+ * a scheduled return — so we don't emit it as a calendar deadline.
+ *
+ * Issue #165. Source: IR284 (Oct 2025), page 10 lines 298-300.
  */
 function calculateRwtDeadlines(from: Date, to: Date): Deadline[] {
   const deadlines: Deadline[] = [];
   const startYear = from.getFullYear();
   const endYear = to.getFullYear() + 1;
 
-  // Monthly IR15P: 20th of every month within the date range.
+  // Monthly: 20th of every month. Each entry covers dividends paid in
+  // the previous month (so 20 April 2026 covers March 2026 payments).
   for (let year = startYear; year <= endYear; year++) {
     for (let month = 1; month <= 12; month++) {
       const dueDate = makeWorkingDate(year, month, 20);
       if (isInRange(dueDate, from, to)) {
-        // Reference the previous month — payment due 20th of THIS month
-        // covers dividends paid in the PREVIOUS month.
         const prevMonth = month === 1 ? 12 : month - 1;
         const prevYear = month === 1 ? year - 1 : year;
         deadlines.push({
           type: "rwt_dividend_payment",
-          description: `RWT on dividends (IR15P) — pay any RWT withheld on dividends paid in ${MONTH_NAMES[prevMonth - 1]} ${prevYear}`,
+          description: `RWT on dividends — file Investment Income reporting + pay any RWT withheld on dividends paid in ${MONTH_NAMES[prevMonth - 1]} ${prevYear}`,
           dueDate: formatDate(dueDate),
           taxYear: getNzTaxYear(dueDate),
         });
       }
-    }
-  }
-
-  // Annual IR15S: 31 May for tax year ending 31 March (year+1).
-  for (let year = startYear; year <= endYear; year++) {
-    const dueDate = makeWorkingDate(year, 5, 31);
-    if (isInRange(dueDate, from, to)) {
-      // Tax year for an IR15S filed 31 May YYYY covers the period ending
-      // 31 March YYYY.
-      const reconciledTaxYear = year;
-      deadlines.push({
-        type: "rwt_annual_reconciliation",
-        description: `RWT annual reconciliation (IR15S) for ${reconciledTaxYear} tax year`,
-        dueDate: formatDate(dueDate),
-        taxYear: reconciledTaxYear,
-      });
     }
   }
 

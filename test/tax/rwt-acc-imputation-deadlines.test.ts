@@ -39,18 +39,22 @@ describe("RWT on dividends (#165)", () => {
     expect(apr2026?.description).toContain("Mar 2026");
   });
 
-  it("emits annual IR15S on 31 May", () => {
-    const annual = deadlinesOfType("rwt_annual_reconciliation", { pays_dividends: true });
-    const may2027 = annual.find((d) => d.dueDate === "2027-06-01"); // 31 May 2027 is Sunday → Mon 1 Jun? Let's allow either via test
-    const exactMay = annual.find((d) => d.dueDate === "2027-05-31");
-    expect(may2027 || exactMay).toBeDefined();
+  it("does NOT emit a 31 May annual reconciliation — Investment Income Reporting regime has no annual return", () => {
+    // Per IR284 (Oct 2025) verification: the legacy "IR15S" annual
+    // reconciliation does not exist under the current regime.
+    // Calendar-only emissions are the monthly 20th. The 20-April
+    // over-deduction-correction window in IR284 page 19 is event-driven
+    // and not surfaced as a recurring deadline.
+    const all = deadlinesOfType("rwt_dividend_payment", { pays_dividends: true });
+    const may = all.find((d) => d.dueDate === "2027-05-31" || d.dueDate === "2027-06-01");
+    // 31 May entry should only appear if it's a 20th-of-monthly payment
+    // (i.e. nothing on the 31st). Confirm no 31 May entry exists.
+    expect(may).toBeUndefined();
   });
 
   it("emits no RWT when pays_dividends is false", () => {
     const monthly = deadlinesOfType("rwt_dividend_payment", { pays_dividends: false });
-    const annual = deadlinesOfType("rwt_annual_reconciliation", { pays_dividends: false });
     expect(monthly).toHaveLength(0);
-    expect(annual).toHaveLength(0);
   });
 });
 
