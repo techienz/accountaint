@@ -45,6 +45,14 @@ export type DeadlineInput = {
    * staff. Issue #168.
    */
   has_shareholder_employee?: boolean;
+  /**
+   * Month (1-12) the Companies Office assigned for this company's
+   * annual return filing. Distinct from incorporation_date.month —
+   * usually they match (registrar typically uses anniversary) but the
+   * registrar may assign a different month. Falls back to
+   * incorporation_date.month if unset. Issue #164.
+   */
+  companies_office_annual_return_month?: number | null;
   dateRange: { from: Date; to: Date };
 };
 
@@ -507,27 +515,59 @@ function calculatePayeDeadlines(
   return deadlines;
 }
 
+/**
+ * Companies Office annual return.
+ *
+ * The Registrar assigns each company a filing month at incorporation.
+ * The user can confirm or change it via the Companies Office portal,
+ * so the field is stored separately from incorporation_date — usually
+ * they match (anniversary) but not always (restorations, admin moves).
+ *
+ * The annual return is due ANY day in the assigned month; we surface
+ * the last day as a hard deadline. Per Companies Office rules, the
+ * FIRST annual return is due in the calendar year AFTER incorporation
+ * — there's no annual return in the year of incorporation itself.
+ *
+ * Issue #164.
+ */
 function calculateAnnualReturnDeadlines(
   config: DeadlineInput,
   from: Date,
   to: Date
 ): Deadline[] {
-  if (config.entity_type !== "company" || !config.incorporation_date) return [];
+  if (config.entity_type !== "company") return [];
+
+  // Pick the month: explicit registrar-assigned field if set, otherwise
+  // fall back to incorporation_date.month. Skip emission entirely if
+  // neither source provides a month (no incorporation_date and no
+  // assigned month means we can't say anything useful).
+  let month: number | null = null;
+  if (config.companies_office_annual_return_month) {
+    month = config.companies_office_annual_return_month;
+  } else if (config.incorporation_date) {
+    month = parseInt(config.incorporation_date.slice(5, 7), 10);
+  }
+  if (month === null) return [];
+
+  // Skip the year of incorporation — first annual return is in year+1.
+  const skipYear = config.incorporation_date
+    ? parseInt(config.incorporation_date.slice(0, 4), 10)
+    : null;
 
   const deadlines: Deadline[] = [];
-  const incMonth = parseInt(config.incorporation_date.slice(5, 7), 10);
-
   const startYear = from.getFullYear();
   const endYear = to.getFullYear();
 
   for (let year = startYear; year <= endYear; year++) {
-    const lastDay = new Date(year, incMonth, 0).getDate();
-    const dueDate = new Date(year, incMonth - 1, lastDay);
+    if (skipYear !== null && year === skipYear) continue;
+
+    const lastDay = new Date(year, month, 0).getDate();
+    const dueDate = new Date(year, month - 1, lastDay);
 
     if (isInRange(dueDate, from, to)) {
       deadlines.push({
         type: "annual_return",
-        description: `Companies Office annual return`,
+        description: `Companies Office annual return — file by end of month`,
         dueDate: formatDate(dueDate),
         taxYear: getNzTaxYear(dueDate),
       });

@@ -39,6 +39,7 @@ type Business = {
   tax_agent_linked?: boolean;
   pays_dividends?: boolean;
   has_shareholder_employee?: boolean;
+  companies_office_annual_return_month?: number | null;
   invoice_prefix?: string | null;
   payment_instructions?: string | null;
   invoice_custom_footer?: string | null;
@@ -85,6 +86,15 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
       nzbn: entityType === "company" ? (formData.get("nzbn") as string) || undefined : undefined,
       company_number: entityType === "company" ? (formData.get("company_number") as string) || undefined : undefined,
       registered_office: entityType === "company" ? (formData.get("registered_office") as string) || undefined : undefined,
+      companies_office_annual_return_month:
+        entityType === "company"
+          ? (() => {
+              const v = formData.get("companies_office_annual_return_month");
+              if (!v || v === "") return null;
+              const n = Number(v);
+              return n >= 1 && n <= 12 ? n : null;
+            })()
+          : undefined,
       balance_date: formData.get("balance_date") as string,
       gst_registered: gstRegistered,
       gst_filing_period: gstRegistered
@@ -205,6 +215,32 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
                     defaultValue={business?.registered_office || ""}
                     placeholder="e.g. 123 Queen St, Auckland"
                   />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="companies_office_annual_return_month">
+                    Companies Office annual-return month
+                  </Label>
+                  <Input
+                    id="companies_office_annual_return_month"
+                    name="companies_office_annual_return_month"
+                    type="number"
+                    min={1}
+                    max={12}
+                    defaultValue={business?.companies_office_annual_return_month ?? ""}
+                    placeholder="1-12 (e.g. 3 = March)"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The Registrar assigns each company a filing month at incorporation. Usually the anniversary month, but check{" "}
+                    <a
+                      href="https://companies-register.companiesoffice.govt.nz"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      companies-register.companiesoffice.govt.nz
+                    </a>
+                    {" "}to confirm yours. Leave blank to fall back to the incorporation-date month.
+                  </p>
                 </div>
               </>
             )}

@@ -57,6 +57,7 @@ export async function checkDeadlines() {
         tax_agent_linked: biz.tax_agent_linked,
         pays_dividends: biz.pays_dividends,
         has_shareholder_employee: biz.has_shareholder_employee,
+        companies_office_annual_return_month: biz.companies_office_annual_return_month,
         has_employees: biz.has_employees,
         paye_frequency: biz.paye_frequency as "monthly" | "twice_monthly" | undefined,
         provisional_tax_method: biz.provisional_tax_method as "standard" | "estimation" | "aim" | undefined,

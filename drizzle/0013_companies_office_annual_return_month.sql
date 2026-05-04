@@ -1,0 +1,1 @@
+ALTER TABLE `businesses` ADD `companies_office_annual_return_month` integer;

@@ -50,6 +50,7 @@ export default async function DeadlinesPage() {
     tax_agent_linked: business.tax_agent_linked,
     pays_dividends: business.pays_dividends,
     has_shareholder_employee: business.has_shareholder_employee,
+    companies_office_annual_return_month: business.companies_office_annual_return_month,
     has_employees: business.has_employees,
     paye_frequency: business.paye_frequency as DeadlineInput["paye_frequency"],
     provisional_tax_method: business.provisional_tax_method as DeadlineInput["provisional_tax_method"],
