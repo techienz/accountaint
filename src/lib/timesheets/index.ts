@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { getDb, schema } from "@/lib/db";
-import { eq, and, ne, gte, lte } from "drizzle-orm";
+import { eq, and, ne, gte, lte, inArray } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 
 type TimesheetEntryInput = {
@@ -298,6 +298,102 @@ export function approveTimesheetEntries(businessId: string, ids: string[]) {
     approved += result.changes;
   }
   return approved;
+}
+
+export type LinkTimesheetsResult =
+  | { ok: true; linkedCount: number; entryIds: string[] }
+  | {
+      ok: false;
+      reason:
+        | "invoice_not_found"
+        | "invoice_voided"
+        | "no_entries_provided"
+        | "entries_invalid";
+      invalidIds?: string[];
+    };
+
+/**
+ * Link a set of approved timesheet entries to an existing invoice. Sets
+ * status="invoiced" and invoice_id=<invoiceId> on each. Used when a user
+ * created an invoice manually (skipping the from-timesheets flow) and
+ * wants to retroactively mark which timesheet hours that invoice billed
+ * — without this, the dashboard double-counts those hours under "Money
+ * Waiting → Uninvoiced work" while the invoice itself sits under
+ * "Invoiced unpaid".
+ *
+ * Refuses if any entry is not currently approved+billable+unlinked, so
+ * we never silently move an entry off another invoice.
+ */
+export function linkTimesheetEntriesToInvoice(
+  businessId: string,
+  invoiceId: string,
+  entryIds: string[]
+): LinkTimesheetsResult {
+  const db = getDb();
+
+  if (entryIds.length === 0) {
+    return { ok: false, reason: "no_entries_provided" };
+  }
+
+  const invoice = db
+    .select({ id: schema.invoices.id, status: schema.invoices.status })
+    .from(schema.invoices)
+    .where(
+      and(
+        eq(schema.invoices.id, invoiceId),
+        eq(schema.invoices.business_id, businessId)
+      )
+    )
+    .get();
+
+  if (!invoice) return { ok: false, reason: "invoice_not_found" };
+  if (invoice.status === "void") return { ok: false, reason: "invoice_voided" };
+
+  const entries = db
+    .select()
+    .from(schema.timesheetEntries)
+    .where(
+      and(
+        eq(schema.timesheetEntries.business_id, businessId),
+        inArray(schema.timesheetEntries.id, entryIds)
+      )
+    )
+    .all();
+
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const invalidIds: string[] = [];
+
+  for (const id of entryIds) {
+    const e = byId.get(id);
+    // Reject anything not currently approved + billable + unlinked.
+    // "draft" must be approved first; "invoiced" already linked.
+    if (!e || e.status !== "approved" || !e.billable || e.invoice_id) {
+      invalidIds.push(id);
+    }
+  }
+
+  if (invalidIds.length > 0) {
+    return { ok: false, reason: "entries_invalid", invalidIds };
+  }
+
+  const now = new Date();
+  let linked = 0;
+  for (const id of entryIds) {
+    const result = db
+      .update(schema.timesheetEntries)
+      .set({ status: "invoiced", invoice_id: invoiceId, updated_at: now })
+      .where(
+        and(
+          eq(schema.timesheetEntries.id, id),
+          eq(schema.timesheetEntries.business_id, businessId),
+          eq(schema.timesheetEntries.status, "approved")
+        )
+      )
+      .run();
+    linked += result.changes;
+  }
+
+  return { ok: true, linkedCount: linked, entryIds };
 }
 
 export function getTimesheetSummary(

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Download, Ban, Pencil, Plus, Bell } from "lucide-react";
 import { SendInvoiceDialog } from "@/components/invoices/send-invoice-dialog";
+import { LinkTimesheetsDialog } from "@/components/invoices/link-timesheets-dialog";
 import { LineItemRow } from "@/components/invoices/line-item-row";
 import { InvoiceTotals } from "@/components/invoices/invoice-totals";
 
@@ -303,6 +304,20 @@ export default function InvoiceDetailPage() {
           <Button variant="ghost" size="sm" onClick={handleVoid}>
             <Ban className="mr-2 h-4 w-4" />Void
           </Button>
+        )}
+        {/* Retroactively link approved timesheet entries to this invoice. Used
+            when the invoice was created manually (typing line items) rather
+            than via the from-timesheets flow — without this, dashboard
+            "Money Waiting" double-counts the same hours. */}
+        {invoice.type === "ACCREC" && invoice.status !== "void" && (
+          <LinkTimesheetsDialog
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoice_number}
+            onLinked={() => {
+              load();
+              router.refresh();
+            }}
+          />
         )}
       </div>
       {reminderMessage && (
