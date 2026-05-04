@@ -40,14 +40,23 @@ export default async function SettingsPage({
       <div className="border-t pt-8">
         <h2 className="text-lg font-semibold mb-1">Tax Rules & Knowledge</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Verify tax rules against current IRD sources and manage IRD knowledge base.
+          Verify tax rates against current IRD sources, and manage the IRD
+          knowledge base the chat cites in its answers.
         </p>
-        <Link
-          href="/settings/regulatory-updates"
-          className="inline-flex items-center gap-2 text-sm text-primary hover:underline font-medium"
-        >
-          Manage Regulatory Updates &rarr;
-        </Link>
+        <div className="flex flex-col gap-2">
+          <Link
+            href="/settings/regulatory-updates"
+            className="inline-flex items-center gap-2 text-sm text-primary hover:underline font-medium"
+          >
+            Manage Regulatory Updates &rarr;
+          </Link>
+          <Link
+            href="/settings/knowledge"
+            className="inline-flex items-center gap-2 text-sm text-primary hover:underline font-medium"
+          >
+            Manage IRD Knowledge Base &rarr;
+          </Link>
+        </div>
       </div>
 
       <div className="border-t pt-8">
