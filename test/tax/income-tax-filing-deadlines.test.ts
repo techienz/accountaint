@@ -84,6 +84,21 @@ describe("Income tax filing deadlines (IR3/IR4/IR6/IR7)", () => {
     // Different dates: filing 7 July, terminal tax 7 February next year
     expect(ir4?.dueDate).not.toBe(tt?.dueDate);
   });
+
+  it("IR4 description bundles IR4S when company has shareholder-employee", () => {
+    // Per IR284 (Oct 2025) verification + IR4S 2025 form header: IR4S
+    // is a supplementary schedule attached to the IR4, same date, no
+    // separate filing event.
+    const withShE = filingDeadlines({ has_shareholder_employee: true });
+    const ir4 = withShE.find((d) => d.type === "ir4" && d.taxYear === 2026);
+    expect(ir4?.description).toContain("IR4S");
+  });
+
+  it("IR4 description does NOT mention IR4S when no shareholder-employee", () => {
+    const withoutShE = filingDeadlines({ has_shareholder_employee: false });
+    const ir4 = withoutShE.find((d) => d.type === "ir4" && d.taxYear === 2026);
+    expect(ir4?.description).not.toContain("IR4S");
+  });
 });
 
 describe("Terminal tax deadlines (with tax-agent extension)", () => {
