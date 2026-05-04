@@ -4,8 +4,7 @@ import { encrypt } from "@/lib/encryption";
 import * as fs from "fs";
 import * as path from "path";
 import { getOrCreateFolder } from "./folders";
-
-const DATA_DIR = path.join(process.cwd(), "data", "documents");
+import { getDocumentsDir } from "@/lib/storage/paths";
 
 type UploadOptions = {
   folderId?: string | null;
@@ -38,7 +37,7 @@ export function createDocumentFromUpload(
   const fileName = `${docId}.${ext}`;
 
   // Ensure directory
-  const dir = path.join(DATA_DIR, businessId);
+  const dir = path.join(getDocumentsDir(), businessId);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }

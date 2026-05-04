@@ -5,9 +5,7 @@ import { eq, and } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 import { createDocumentFromUpload } from "@/lib/documents/upload";
-
-const RECEIPTS_DIR = "data/receipts";
-const DOCS_DIR = "data/documents";
+import { getReceiptsDir, getDocumentsDir } from "@/lib/storage/paths";
 
 /**
  * GET: Serve the receipt file for a bank transaction.
@@ -41,9 +39,9 @@ export async function GET(
   }
 
   // Try document vault first, then legacy receipts dir
-  let filePath = path.join(process.cwd(), DOCS_DIR, businessId, txn.receipt_path);
+  let filePath = path.join(getDocumentsDir(), businessId, txn.receipt_path);
   if (!fs.existsSync(filePath)) {
-    filePath = path.join(process.cwd(), RECEIPTS_DIR, businessId, txn.receipt_path);
+    filePath = path.join(getReceiptsDir(), businessId, txn.receipt_path);
   }
   if (!fs.existsSync(filePath)) {
     return NextResponse.json({ error: "File not found" }, { status: 404 });
@@ -151,7 +149,7 @@ export async function DELETE(
     .get();
 
   if (txn?.receipt_path) {
-    const filePath = path.join(process.cwd(), RECEIPTS_DIR, businessId, txn.receipt_path);
+    const filePath = path.join(getReceiptsDir(), businessId, txn.receipt_path);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
     db.update(schema.bankTransactions)

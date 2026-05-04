@@ -4,8 +4,7 @@ import path from "path";
 import { getSession } from "@/lib/auth";
 import { getDb, schema } from "@/lib/db";
 import { eq, and } from "drizzle-orm";
-
-const RECEIPTS_DIR = "data/receipts";
+import { getReceiptsDir } from "@/lib/storage/paths";
 
 export async function GET(
   _request: Request,
@@ -36,8 +35,7 @@ export async function GET(
   }
 
   const filePath = path.join(
-    process.cwd(),
-    RECEIPTS_DIR,
+    getReceiptsDir(),
     businessId,
     asset.receipt_path
   );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import fs from "fs";
 import path from "path";
+import { getChatAttachmentsDir } from "@/lib/storage/paths";
 
 export async function GET(
   _request: Request,
@@ -22,12 +23,13 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const filePath = path.join(process.cwd(), "data", "chat-attachments", ...segments);
+  const root = getChatAttachmentsDir();
+  const resolved = path.resolve(path.join(root, ...segments));
 
-  // Prevent path traversal
-  const resolved = path.resolve(filePath);
-  const expected = path.resolve(path.join(process.cwd(), "data", "chat-attachments"));
-  if (!resolved.startsWith(expected)) {
+  // Prevent path traversal — use path.relative so partial-prefix matches
+  // (e.g. "/data/chat-attachments-other") don't pass.
+  const rel = path.relative(root, resolved);
+  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

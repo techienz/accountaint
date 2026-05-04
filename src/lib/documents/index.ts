@@ -5,8 +5,7 @@ import { encrypt, decrypt } from "@/lib/encryption";
 import { deleteDocumentChunks } from "@/lib/documents/embeddings";
 import * as fs from "fs";
 import * as path from "path";
-
-const DATA_DIR = path.join(process.cwd(), "data", "documents");
+import { getDocumentsDir } from "@/lib/storage/paths";
 
 export type DocumentType =
   | "tax_return_ir4"
@@ -29,7 +28,7 @@ export type DocumentInput = {
 };
 
 function ensureDocumentDir(businessId: string): string {
-  const dir = path.join(DATA_DIR, businessId);
+  const dir = path.join(getDocumentsDir(), businessId);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -138,7 +137,7 @@ export function deleteDocument(id: string, businessId: string): boolean {
   if (!existing) return false;
 
   // Delete file
-  const filePath = path.join(DATA_DIR, businessId, existing.file_path);
+  const filePath = path.join(getDocumentsDir(), businessId, existing.file_path);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }
@@ -204,5 +203,5 @@ export function saveDocumentFile(
 }
 
 export function getDocumentFilePath(businessId: string, filePath: string): string {
-  return path.join(DATA_DIR, businessId, filePath);
+  return path.join(getDocumentsDir(), businessId, filePath);
 }

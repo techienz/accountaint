@@ -4,6 +4,7 @@ import { listHolidayAttachments, createHolidayAttachment, deleteHolidayAttachmen
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { v4 as uuid } from "uuid";
+import { getHolidayAttachmentsDir } from "@/lib/storage/paths";
 
 export async function GET(
   _request: Request,
@@ -37,7 +38,7 @@ export async function POST(
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const dir = join(process.cwd(), "data", "holiday-attachments", holidayId);
+    const dir = join(getHolidayAttachmentsDir(), holidayId);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
     const ext = file.name.split(".").pop() || "bin";
