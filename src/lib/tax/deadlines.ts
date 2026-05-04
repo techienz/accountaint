@@ -462,7 +462,10 @@ function calculatePayeDeadlines(
   to: Date
 ): Deadline[] {
   const deadlines: Deadline[] = [];
-  const frequency = config.paye_frequency!;
+  // Defensive: if paye_frequency is unset (config gap warned in #170),
+  // default to monthly rather than throw. Better to emit slightly-wrong
+  // dates than crash the deadlines page.
+  const frequency = config.paye_frequency ?? "monthly";
 
   const startYear = from.getFullYear();
   const endYear = to.getFullYear();

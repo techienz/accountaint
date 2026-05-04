@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { calculateDeadlines } from "@/lib/tax/deadlines";
+import { detectConfigWarnings } from "@/lib/tax/config-warnings";
 import { parseDateLocal } from "@/lib/utils/dates";
 import type { DeadlineInput } from "@/lib/tax/deadlines";
 import { getUrgencyInfo, typeColors, typeLabels } from "@/lib/tax/urgency";
@@ -9,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExplainButton } from "@/components/explain-button";
 import { SetPageContext } from "@/components/page-context-provider";
 import { PAGE_CONTEXTS } from "@/lib/help/page-context";
+import { AlertTriangle } from "lucide-react";
 
 function formatDisplayDate(dateStr: string): string {
   const date = parseDateLocal(dateStr);
@@ -61,6 +64,19 @@ export default async function DeadlinesPage() {
   };
 
   const deadlines = calculateDeadlines(input);
+  const warnings = detectConfigWarnings({
+    entity_type: business.entity_type,
+    gst_registered: business.gst_registered,
+    gst_filing_period: business.gst_filing_period,
+    gst_2monthly_cycle: business.gst_2monthly_cycle,
+    has_employees: business.has_employees,
+    paye_frequency: business.paye_frequency,
+    provisional_tax_method: business.provisional_tax_method,
+    incorporation_date: business.incorporation_date,
+    companies_office_annual_return_month: business.companies_office_annual_return_month,
+    pays_dividends: business.pays_dividends,
+    has_shareholder_employee: business.has_shareholder_employee,
+  });
 
   return (
     <div className="space-y-6">
@@ -74,6 +90,32 @@ export default async function DeadlinesPage() {
         </div>
         <ExplainButton context={PAGE_CONTEXTS.deadlines} />
       </div>
+
+      {warnings.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              Configuration incomplete — some reminders may be missing or wrong
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ul className="space-y-2 text-sm">
+              {warnings.map((w) => (
+                <li key={w.id}>
+                  <strong className={w.severity === "error" ? "text-red-700 dark:text-red-400" : "text-amber-700 dark:text-amber-400"}>
+                    {w.title}.
+                  </strong>{" "}
+                  {w.message}{" "}
+                  <Link href={w.fixHref} className="underline">
+                    Fix in settings →
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {deadlines.length === 0 ? (
         <Card>
