@@ -4,6 +4,7 @@ import { getDb, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
+import { getLogosDir } from "@/lib/storage/paths";
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const logoDir = join(process.cwd(), "data", "logos");
+  const logoDir = getLogosDir();
   if (!existsSync(logoDir)) mkdirSync(logoDir, { recursive: true });
 
   const filename = `${session.activeBusiness.id}.${ext}`;

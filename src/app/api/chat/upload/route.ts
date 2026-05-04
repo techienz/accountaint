@@ -3,8 +3,7 @@ import { getSession } from "@/lib/auth";
 import { v4 as uuid } from "uuid";
 import fs from "fs";
 import path from "path";
-
-const CHAT_ATTACHMENTS_DIR = "data/chat-attachments";
+import { getChatAttachmentsDir } from "@/lib/storage/paths";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = [
   "image/png",
@@ -44,7 +43,7 @@ export async function POST(request: NextRequest) {
   }
 
   const messageId = uuid();
-  const dir = path.join(process.cwd(), CHAT_ATTACHMENTS_DIR, business.id, messageId);
+  const dir = path.join(getChatAttachmentsDir(), business.id, messageId);
   fs.mkdirSync(dir, { recursive: true });
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -52,7 +51,9 @@ export async function POST(request: NextRequest) {
   const filePath = path.join(dir, safeName);
   fs.writeFileSync(filePath, buffer);
 
-  const relativePath = path.join(CHAT_ATTACHMENTS_DIR, business.id, messageId, safeName);
+  // Store the path relative to the chat-attachments root (no "data/" prefix).
+  // resolveChatAttachmentPath in src/lib/storage/paths.ts is the inverse.
+  const relativePath = path.join(business.id, messageId, safeName);
 
   return NextResponse.json({
     filename: safeName,

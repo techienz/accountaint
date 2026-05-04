@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { decrypt } from "@/lib/encryption";
+import { getStorageRootDir } from "@/lib/storage/paths";
 import { formatDateNzDash } from "@/lib/utils/format-date-nz";
 
 type PdfInvoiceData = {
@@ -53,7 +54,10 @@ function formatNzd(value: number): string {
 function getLogoDataUri(logoPath: string | null): string | null {
   if (!logoPath) return null;
   try {
-    const fullPath = join(process.cwd(), "data", logoPath);
+    // logoPath is stored as `logos/<biz>.<ext>` (relative to the storage
+    // root). Joining to STORAGE_ROOT gives the correct on-disk path in
+    // both dev (cwd/data/logos/...) and container (/data/logos/...).
+    const fullPath = join(getStorageRootDir(), logoPath);
     const buffer = readFileSync(fullPath);
     const ext = logoPath.split(".").pop()?.toLowerCase() || "png";
     const mime = ext === "svg" ? "image/svg+xml" : `image/${ext}`;

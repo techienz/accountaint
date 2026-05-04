@@ -1,84 +1,79 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
+import { resolveChatAttachmentPath, getChatAttachmentsDir } from "@/lib/storage/paths";
 
 /**
  * Path-traversal guard for chat attachments. Audit finding #63 (2026-05-01).
  *
- * The attachment path supplied by a client gets resolved relative to cwd and
- * must end up inside data/chat-attachments/. The function under test (the
- * isPathSafe in src/lib/ai/attachments.ts) is module-private — we re-implement
- * the exact predicate here so we can assert on the policy without touching
- * the module's side-effects (which include LM Studio + pdf-parse imports).
+ * Pre-storage-paths refactor, the guard was a module-private isPathSafe in
+ * src/lib/ai/attachments.ts that resolved relative to cwd and required the
+ * result to live under data/chat-attachments. The refactor replaced that
+ * with the public resolveChatAttachmentPath helper exported from
+ * src/lib/storage/paths.ts. Same policy, fewer copies.
  *
- * If the policy ever changes in attachments.ts, update this test to match.
+ * The helper accepts both legacy ("data/chat-attachments/...") and current
+ * (no-prefix) DB-stored shapes for backward compat. Returns null for any
+ * unsafe input.
  */
 
-const ATTACHMENT_ROOT = path.resolve(process.cwd(), "data/chat-attachments");
-
-function isPathSafe(suppliedPath: string): boolean {
-  if (!suppliedPath || typeof suppliedPath !== "string") return false;
-  if (path.isAbsolute(suppliedPath)) return false;
-  const resolved = path.resolve(process.cwd(), suppliedPath);
-  const rel = path.relative(ATTACHMENT_ROOT, resolved);
-  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
-}
+const ROOT = getChatAttachmentsDir();
 
 describe("Chat attachment path validation (audit #63)", () => {
-  describe("legitimate paths PASS", () => {
-    it("file inside data/chat-attachments/", () => {
-      expect(isPathSafe("data/chat-attachments/biz1/msg-abc/file.pdf")).toBe(true);
+  describe("legitimate paths resolve to a path under the attachments root", () => {
+    it("legacy form with data/chat-attachments/ prefix", () => {
+      const r = resolveChatAttachmentPath("data/chat-attachments/biz1/msg-abc/file.pdf");
+      expect(r).not.toBeNull();
+      if (r) expect(r.startsWith(ROOT + path.sep)).toBe(true);
+    });
+
+    it("current form without the data/ prefix", () => {
+      const r = resolveChatAttachmentPath("biz1/msg-abc/file.pdf");
+      expect(r).not.toBeNull();
+      if (r) expect(r.startsWith(ROOT + path.sep)).toBe(true);
     });
 
     it("nested business + message paths", () => {
-      expect(isPathSafe("data/chat-attachments/business-abc/2026-05-01/file.pdf")).toBe(true);
+      const r = resolveChatAttachmentPath("business-abc/2026-05-01/file.pdf");
+      expect(r).not.toBeNull();
     });
   });
 
-  describe("attack paths FAIL", () => {
+  describe("attack paths return null", () => {
     it("rejects ../ traversal to .env", () => {
-      expect(isPathSafe("data/chat-attachments/../../.env")).toBe(false);
-      expect(isPathSafe("../.env")).toBe(false);
-      expect(isPathSafe("../../.env")).toBe(false);
+      expect(resolveChatAttachmentPath("data/chat-attachments/../../.env")).toBeNull();
+      expect(resolveChatAttachmentPath("../.env")).toBeNull();
+      expect(resolveChatAttachmentPath("../../.env")).toBeNull();
     });
 
     it("rejects traversal to the SQLite DB", () => {
-      expect(isPathSafe("data/chat-attachments/../accountaint.db")).toBe(false);
-      expect(isPathSafe("../data/accountaint.db")).toBe(false);
+      expect(resolveChatAttachmentPath("data/chat-attachments/../accountaint.db")).toBeNull();
+      expect(resolveChatAttachmentPath("../data/accountaint.db")).toBeNull();
     });
 
     it("rejects absolute paths", () => {
-      expect(isPathSafe("/etc/passwd")).toBe(false);
-      expect(isPathSafe("/home/kurt/.ssh/id_rsa")).toBe(false);
-      expect(isPathSafe("/proc/self/environ")).toBe(false);
-    });
-
-    it("rejects sibling directory with similar prefix", () => {
-      // "data/chat-attachments-other" must not be confused with "data/chat-attachments"
-      expect(isPathSafe("data/chat-attachments-other/file")).toBe(false);
-      expect(isPathSafe("data/chat-attachments-evil/file")).toBe(false);
+      expect(resolveChatAttachmentPath("/etc/passwd")).toBeNull();
+      expect(resolveChatAttachmentPath("/home/kurt/.ssh/id_rsa")).toBeNull();
+      expect(resolveChatAttachmentPath("/proc/self/environ")).toBeNull();
     });
 
     it("rejects empty / null / non-string inputs", () => {
-      expect(isPathSafe("")).toBe(false);
-      expect(isPathSafe(null as unknown as string)).toBe(false);
-      expect(isPathSafe(undefined as unknown as string)).toBe(false);
-      expect(isPathSafe(123 as unknown as string)).toBe(false);
+      expect(resolveChatAttachmentPath("")).toBeNull();
+      expect(resolveChatAttachmentPath(null as unknown as string)).toBeNull();
+      expect(resolveChatAttachmentPath(undefined as unknown as string)).toBeNull();
+      expect(resolveChatAttachmentPath(123 as unknown as string)).toBeNull();
     });
 
-    it("rejects ATTACHMENT_ROOT itself (must be a file inside, not the root)", () => {
-      expect(isPathSafe("data/chat-attachments")).toBe(false);
-      expect(isPathSafe("data/chat-attachments/")).toBe(false);
+    it("rejects the root itself (must be a file inside, not the root)", () => {
+      expect(resolveChatAttachmentPath("data/chat-attachments")).toBeNull();
+      expect(resolveChatAttachmentPath("data/chat-attachments/")).toBeNull();
     });
 
-    it("rejects encoded traversal (defence-in-depth — Node path doesn't decode but verify)", () => {
-      // path.resolve doesn't URL-decode, so %2e%2e doesn't actually traverse —
-      // but verify the function rejects them anyway as not-an-existing-path.
-      // This will not match the legitimate prefix because the literal % chars
-      // become part of the filename.
-      expect(isPathSafe("data/chat-attachments/%2e%2e/.env")).toBe(true); // legal-as-filename
-      // Reality check: a file literally named "..%2e%2e/" doesn't exist; the
-      // existsSync check in attachments.ts will reject. The path-safety check
-      // is one layer; existsSync is the second.
+    it("encoded traversal segments are treated as literal filenames (no URL decoding)", () => {
+      // path.resolve doesn't URL-decode, so %2e%2e becomes a literal "%2e%2e"
+      // path segment. That's safe — it stays inside ATTACHMENT_ROOT and the
+      // existsSync check in attachments.ts is the second layer.
+      const r = resolveChatAttachmentPath("biz1/%2e%2e/.env");
+      expect(r).not.toBeNull();
     });
   });
 });

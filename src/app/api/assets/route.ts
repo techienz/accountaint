@@ -6,6 +6,7 @@ import { getDb } from "@/lib/db";
 import { assets, expenses } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { listAssets } from "@/lib/assets/register";
+import { getReceiptsDir } from "@/lib/storage/paths";
 import { getTaxYearConfig, getNzTaxYear } from "@/lib/tax/rules";
 import {
   parseNewClassification,
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
   if (receiptFile) {
     const ext = receiptFile.name.split(".").pop() || "bin";
     const receiptFilename = `asset-${id}.${ext}`;
-    const receiptDir = path.join(process.cwd(), "data/receipts", businessId);
+    const receiptDir = path.join(getReceiptsDir(), businessId);
     fs.mkdirSync(receiptDir, { recursive: true });
     const buffer = Buffer.from(await receiptFile.arrayBuffer());
     fs.writeFileSync(path.join(receiptDir, receiptFilename), buffer);
@@ -150,11 +151,11 @@ export async function POST(request: NextRequest) {
         .where(eq(expenses.id, fromExpenseId))
         .get();
       if (expense?.receipt_path) {
-        const srcPath = path.join(process.cwd(), "data/receipts", businessId, expense.receipt_path);
+        const srcPath = path.join(getReceiptsDir(), businessId, expense.receipt_path);
         if (fs.existsSync(srcPath)) {
           const ext = expense.receipt_path.split(".").pop() || "bin";
           const assetReceiptName = `asset-${id}.${ext}`;
-          const destPath = path.join(process.cwd(), "data/receipts", businessId, assetReceiptName);
+          const destPath = path.join(getReceiptsDir(), businessId, assetReceiptName);
           fs.copyFileSync(srcPath, destPath);
           db.update(assets)
             .set({ receipt_path: assetReceiptName, receipt_mime: expense.receipt_mime })

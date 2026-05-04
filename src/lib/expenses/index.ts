@@ -6,8 +6,7 @@ import { learnVendorCategory, suggestCategory, type CategorySuggestion } from "@
 import { postExpenseJournal } from "@/lib/ledger/post";
 import * as fs from "fs";
 import * as path from "path";
-
-const DATA_DIR = path.join(process.cwd(), "data", "receipts");
+import { getReceiptsDir } from "@/lib/storage/paths";
 
 type ExpenseInput = {
   vendor: string;
@@ -23,7 +22,7 @@ type ExpenseInput = {
 };
 
 function ensureReceiptDir(businessId: string): string {
-  const dir = path.join(DATA_DIR, businessId);
+  const dir = path.join(getReceiptsDir(), businessId);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -168,7 +167,7 @@ export function deleteExpense(id: string, businessId: string) {
 
   // Delete receipt file if exists
   if (existing.receipt_path) {
-    const filePath = path.join(DATA_DIR, businessId, existing.receipt_path);
+    const filePath = path.join(getReceiptsDir(), businessId, existing.receipt_path);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -259,5 +258,5 @@ export function saveReceiptFile(
 }
 
 export function getReceiptFilePath(businessId: string, receiptPath: string): string {
-  return path.join(DATA_DIR, businessId, receiptPath);
+  return path.join(getReceiptsDir(), businessId, receiptPath);
 }
