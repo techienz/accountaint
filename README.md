@@ -1,5 +1,21 @@
 # Accountaint
 
+> ## ⚠️ Not financial, tax, or legal advice — use at your own risk
+>
+> **Accountaint can get things wrong.** It uses AI to answer tax questions and applies NZ tax rules from code that may have bugs, drift behind IRD changes, or misinterpret your specific situation. The figures it produces — GST returns, IR3/IR4 calculations, salary/dividend optimisation, RWT, deadlines — are estimates, not authoritative filings.
+>
+> **You are responsible for the numbers you file.** Before relying on any output for filing with IRD, the Companies Office, ACC, or any other authority:
+>
+> - **Verify against your own records.** Hand-calc at least one transaction or scenario and confirm it matches what the app says.
+> - **Cross-check with IRD's published guidance** (ird.govt.nz) — the canonical source for any tax rate or due date.
+> - **Consult a chartered accountant or registered tax agent** for anything material — especially first-year filings, mid-year changes (entity type, balance date, GST registration), and any unusual transaction.
+>
+> The authors and contributors accept no liability for incorrect filings, missed deadlines, penalties, or any other loss arising from use of this software. If you are not comfortable verifying tax figures yourself, **do not use this app to file your taxes** — use a registered NZ accountant instead.
+>
+> By using Accountaint you agree to use it at your own risk.
+
+---
+
 Self-hosted, AI-powered accounting app for New Zealand businesses. Your financial data stays on your machine, encrypted at rest. Claude handles reasoning (with PII sanitisation), an optional local LLM handles sensitive tasks like OCR and categorisation.
 
 ## Highlights
