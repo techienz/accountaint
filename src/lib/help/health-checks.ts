@@ -29,6 +29,7 @@ type BusinessConfig = {
   tax_agent_linked?: boolean | null;
   pays_dividends?: boolean | null;
   has_shareholder_employee?: boolean | null;
+  companies_office_annual_return_month?: number | null;
   has_employees: boolean;
   paye_frequency?: string | null;
   provisional_tax_method?: string | null;
@@ -116,6 +117,7 @@ export function runHealthChecks(business: BusinessConfig): HealthCheckItem[] {
     tax_agent_linked: business.tax_agent_linked ?? undefined,
     pays_dividends: business.pays_dividends ?? undefined,
     has_shareholder_employee: business.has_shareholder_employee ?? undefined,
+    companies_office_annual_return_month: business.companies_office_annual_return_month ?? undefined,
     has_employees: business.has_employees,
     paye_frequency: business.paye_frequency as
       | "monthly"

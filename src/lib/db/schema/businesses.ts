@@ -83,6 +83,15 @@ export const businesses = sqliteTable("businesses", {
   })
     .notNull()
     .default(false),
+  // Month (1-12) the Companies Office assigned for this company's
+  // annual return. Distinct from incorporation_date.month — the
+  // registrar usually uses the anniversary month but may assign a
+  // different one (restorations, admin moves). NULL = unconfigured;
+  // calculator falls back to incorporation_date.month with a warning.
+  // Companies only. Issue #164.
+  companies_office_annual_return_month: integer(
+    "companies_office_annual_return_month"
+  ),
   next_resolution_number: integer("next_resolution_number").notNull().default(1),
   auto_invoice_reminders: integer("auto_invoice_reminders", { mode: "boolean" })
     .notNull()
