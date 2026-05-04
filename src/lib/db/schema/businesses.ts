@@ -66,6 +66,23 @@ export const businesses = sqliteTable("businesses", {
   tax_agent_linked: integer("tax_agent_linked", { mode: "boolean" })
     .notNull()
     .default(false),
+  // True if the business pays dividends to shareholders. Triggers RWT
+  // deadline emission: IR15P (monthly RWT payment, 20th of next month
+  // when a dividend is paid) and IR15S (annual reconciliation, 31 May
+  // for tax year ending 31 March). Issue #165.
+  pays_dividends: integer("pays_dividends", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  // True if the business has a shareholder-employee drawing salary
+  // (common sole-director pattern). Affects ACC Work Account levy
+  // emission — sole-director companies with a shareholder-employee ARE
+  // liable for the levy on those earnings, even with no PAYE staff.
+  // Issue #168.
+  has_shareholder_employee: integer("has_shareholder_employee", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   next_resolution_number: integer("next_resolution_number").notNull().default(1),
   auto_invoice_reminders: integer("auto_invoice_reminders", { mode: "boolean" })
     .notNull()

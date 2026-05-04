@@ -37,6 +37,8 @@ type Business = {
   fbt_registered?: boolean;
   pays_contractors?: boolean;
   tax_agent_linked?: boolean;
+  pays_dividends?: boolean;
+  has_shareholder_employee?: boolean;
   invoice_prefix?: string | null;
   payment_instructions?: string | null;
   invoice_custom_footer?: string | null;
@@ -406,6 +408,36 @@ export function BusinessForm({ business, onSaved }: BusinessFormProps) {
               </div>
               <p className="text-xs text-muted-foreground pl-6">
                 If you have a registered tax agent doing your returns, you get the IRD extension of time. Without one (most self-filers), IR4/IR3 is due 7 July and terminal tax due 7 February. With one, IR4/IR3 due 31 March and terminal tax due 7 April. Leave unchecked if you self-file.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="pays_dividends"
+                  defaultChecked={business?.pays_dividends ?? false}
+                  name="pays_dividends"
+                  className="h-4 w-4 rounded border-input"
+                />
+                <Label htmlFor="pays_dividends">Pays dividends to shareholders</Label>
+              </div>
+              <p className="text-xs text-muted-foreground pl-6">
+                Triggers RWT deadline reminders. Each month a dividend is paid, you must pay the RWT to IRD by the 20th of the following month (IR15P). An annual reconciliation (IR15S) is due 31 May.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="has_shareholder_employee"
+                  defaultChecked={business?.has_shareholder_employee ?? false}
+                  name="has_shareholder_employee"
+                  className="h-4 w-4 rounded border-input"
+                />
+                <Label htmlFor="has_shareholder_employee">Has a shareholder-employee drawing salary</Label>
+              </div>
+              <p className="text-xs text-muted-foreground pl-6">
+                Common sole-director pattern. The shareholder-employee&apos;s earnings are liable for ACC Work Account levy even if there are no PAYE staff. Tick this if you (or any shareholder) draws a salary from the company.
               </p>
             </div>
           </div>

@@ -27,6 +27,8 @@ type BusinessConfig = {
   gst_filing_period?: string | null;
   gst_2monthly_cycle?: string | null;
   tax_agent_linked?: boolean | null;
+  pays_dividends?: boolean | null;
+  has_shareholder_employee?: boolean | null;
   has_employees: boolean;
   paye_frequency?: string | null;
   provisional_tax_method?: string | null;
@@ -112,6 +114,8 @@ export function runHealthChecks(business: BusinessConfig): HealthCheckItem[] {
       | undefined,
     gst_2monthly_cycle: business.gst_2monthly_cycle as "A" | "B" | undefined,
     tax_agent_linked: business.tax_agent_linked ?? undefined,
+    pays_dividends: business.pays_dividends ?? undefined,
+    has_shareholder_employee: business.has_shareholder_employee ?? undefined,
     has_employees: business.has_employees,
     paye_frequency: business.paye_frequency as
       | "monthly"

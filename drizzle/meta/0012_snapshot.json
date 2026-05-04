@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0c233628-a527-4673-9059-2470468ce33c",
-  "prevId": "a95d53c4-8ce2-4c6b-b79f-40547707b9f5",
+  "id": "5da3b4bc-c8b1-4be1-8cc4-f9702a592a66",
+  "prevId": "0c233628-a527-4673-9059-2470468ce33c",
   "tables": {
     "akahu_accounts": {
       "name": "akahu_accounts",
@@ -2358,6 +2358,22 @@
         },
         "tax_agent_linked": {
           "name": "tax_agent_linked",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "pays_dividends": {
+          "name": "pays_dividends",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "has_shareholder_employee": {
+          "name": "has_shareholder_employee",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
